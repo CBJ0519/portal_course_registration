@@ -1,0 +1,275 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Microsoft JhengHei', 'Arial', sans-serif;
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f5f5;
+  margin: 0;
+}
+
+.container {
+  padding: 16px;
+}
+
+h1 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.data-status {
+  display: none;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.status-fresh {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border: 1px solid #4CAF50;
+}
+
+.status-valid {
+  background: #E3F2FD;
+  color: #1565C0;
+  border: 1px solid #2196F3;
+}
+
+.status-warning {
+  background: #FFF3E0;
+  color: #E65100;
+  border: 1px solid #FF9800;
+}
+
+.data-status a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.search-box {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.search-hint {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  border-left: 3px solid #4CAF50;
+}
+
+.hint-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #444;
+}
+
+.hint-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  line-height: 1.6;
+}
+
+.hint-item {
+  display: inline-block;
+  padding: 2px 8px;
+  background: white;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #555;
+  border: 1px solid #e0e0e0;
+}
+
+#searchInput {
+  flex: 1;
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+#searchInput:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+#searchBtn {
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+#searchBtn:hover {
+  background: #45a049;
+}
+
+.loading {
+  text-align: center;
+  padding: 30px 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.loading::before {
+  content: "";
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #4CAF50;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.results {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 300px;
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.placeholder {
+  text-align: center;
+  color: #999;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+.course-item {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  transition: background 0.2s;
+}
+
+.course-item:last-child {
+  border-bottom: none;
+}
+
+.course-item:hover {
+  background: #f9f9f9;
+}
+
+.course-code {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.course-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.course-department {
+  font-size: 14px;
+  color: #4CAF50;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.path-count {
+  font-size: 13px;
+  color: #666;
+  font-weight: 600;
+  margin-bottom: 8px;
+  margin-top: 4px;
+}
+
+.course-path {
+  font-size: 12px;
+  color: #2196F3;
+  font-weight: 500;
+  margin-bottom: 6px;
+  padding: 5px 10px;
+  background: #E3F2FD;
+  border-radius: 4px;
+  border-left: 3px solid #2196F3;
+  line-height: 1.5;
+}
+
+.course-path:last-of-type {
+  margin-bottom: 8px;
+}
+
+.course-info {
+  font-size: 12px;
+  color: #777;
+  margin-top: 4px;
+}
+
+.no-results {
+  text-align: center;
+  color: #999;
+  padding: 40px 20px;
+}
+
+.footer {
+  margin-top: 12px;
+  text-align: center;
+}
+
+#refreshData {
+  padding: 8px 16px;
+  background: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.3s;
+}
+
+#refreshData:hover {
+  background: #0b7dda;
+}
+
+.results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.results::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.results::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+.results::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

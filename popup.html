@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NYCU 課程搜尋</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>NYCU 課程搜尋</h1>
+
+    <div id="dataStatus" class="data-status"></div>
+
+    <div class="search-box">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="輸入課程名稱、代碼、系所、學院或教師（多個條件用空格隔開）"
+        autocomplete="off"
+      >
+      <button id="searchBtn">搜尋</button>
+    </div>
+
+    <div class="search-hint">
+      <div class="hint-title">💡 搜尋範例：</div>
+      <div class="hint-examples">
+        <span class="hint-item">課程名稱：「微積分」</span>
+        <span class="hint-item">課程簡稱：「邏設」「線代」「計組」</span>
+        <span class="hint-item">課程代碼：「DCP1192」</span>
+        <span class="hint-item">教師：「王禹超」</span>
+        <span class="hint-item">系所：「資工系」</span>
+        <span class="hint-item">學院：「電機學院」</span>
+        <span class="hint-item">時間：「週一」</span>
+        <span class="hint-item">教室：「EC015」</span>
+        <span class="hint-item">多條件：「邏設 一年級」「資工 演算法」</span>
+      </div>
+    </div>
+
+    <div id="loading" class="loading" style="display: none;">
+      搜尋中...
+    </div>
+
+    <div id="results" class="results">
+      <div class="placeholder">
+        請輸入課程名稱或代碼開始搜尋
+      </div>
+    </div>
+
+    <div class="footer">
+      <button id="refreshData">重新載入課程資料（約需 5 分鐘）</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

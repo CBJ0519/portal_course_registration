@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "NYCU 課程搜尋助手",
+  "version": "1.0",
+  "description": "快速搜尋 NYCU 課程並查看開課單位",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://timetable.nycu.edu.tw/*"
+  ],
+  "action": {
+    "default_title": "開啟 NYCU 課程搜尋"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://timetable.nycu.edu.tw/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
