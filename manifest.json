@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "NYCU 課程搜尋助手",
-  "version": "1.0",
-  "description": "快速搜尋 NYCU 課程並查看開課單位",
+  "version": "2.0",
+  "description": "NYCU 課程搜尋工具：支援多條件搜尋、智能簡稱識別、書籤管理、課程詳細資訊查詢（評分方式、教學目標等）、選課路徑顯示，資料本地儲存7天",
   "permissions": [
     "storage",
     "activeTab",
