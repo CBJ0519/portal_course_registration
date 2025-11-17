@@ -408,6 +408,12 @@ h2 {
   min-width: 0; /* 允許內容收縮 */
 }
 
+.course-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* 課程代碼和名稱在 header 內時移除 margin */
 .course-header-left .course-code {
   margin-bottom: 4px;
@@ -449,4 +455,153 @@ h2 {
 .bookmark-btn.bookmarked:hover {
   background: linear-gradient(135deg, #FFE082 0%, #FFD54F 100%);
   transform: scale(1.15) rotate(15deg);
+}
+
+/* 展開按鈕樣式 */
+.expand-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #f9f9f9;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expand-btn:hover {
+  background: #E3F2FD;
+  border-color: #2196F3;
+}
+
+.expand-btn.expanded {
+  background: linear-gradient(135deg, #64B5F6 0%, #2196F3 100%);
+  border-color: #1976D2;
+  color: white;
+}
+
+.expand-icon {
+  transition: transform 0.3s;
+  display: inline-block;
+}
+
+.expand-btn.expanded .expand-icon {
+  transform: rotate(180deg);
+}
+
+/* 詳細資訊區域樣式 */
+.course-details {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #2196F3;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 1000px;
+  }
+}
+
+.details-loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.details-loading::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #2196F3;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.details-error {
+  text-align: center;
+  padding: 12px;
+  color: #d32f2f;
+  font-size: 13px;
+}
+
+.details-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.details-section {
+  margin-bottom: 16px;
+}
+
+.details-section:last-child {
+  margin-bottom: 0;
+}
+
+.details-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1976D2;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #E3F2FD;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.detail-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #666;
+  min-width: 80px;
+}
+
+.detail-value {
+  color: #333;
+  flex: 1;
+}
+
+.required-course {
+  color: #d32f2f;
+  font-weight: 600;
+}
+
+.elective-course {
+  color: #388E3C;
+  font-weight: 600;
+}
+
+.detail-text {
+  color: #555;
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  line-height: 1.8;
 }

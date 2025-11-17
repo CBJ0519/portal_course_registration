@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // 書籤資料
   let bookmarks = {};
   let currentResults = []; // 保存當前搜尋結果
+  let courseDetailsCache = {}; // 快取課程詳細資訊
 
   // 載入書籤資料
   loadBookmarks();
@@ -221,15 +222,26 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
-            <button class="bookmark-btn ${bookmarkClass}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
-              ${bookmarkIcon}
-            </button>
+            <div class="course-actions">
+              <button class="expand-btn" data-course-index="${index}" data-course-key="${courseKey}" title="顯示詳細資訊">
+                <span class="expand-icon">▼</span>
+              </button>
+              <button class="bookmark-btn ${bookmarkClass}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
+                ${bookmarkIcon}
+              </button>
+            </div>
           </div>
           ${pathsHtml}
           ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+
+          <!-- 詳細資訊區域（可收合） -->
+          <div class="course-details" id="details-${courseKey}" style="display: none;">
+            <div class="details-loading">載入中...</div>
+          </div>
+
           ${clickHint}
         </div>
       `;
@@ -261,6 +273,18 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleBookmark(course);
         // 重新顯示結果以更新書籤狀態
         displayResults(results);
+      });
+    });
+
+    // 為每個展開按鈕添加點擊事件
+    const expandBtns = resultsDiv.querySelectorAll('.expand-btn');
+    expandBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 阻止事件冒泡
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const courseKey = this.dataset.courseKey;
+        const course = results[courseIndex];
+        toggleCourseDetails(this, course, courseKey);
       });
     });
   }
@@ -417,6 +441,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
       const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
 
+      const courseKey = getCourseKey(course);
+
       return `
         <div class="course-item ${clickableClass}" data-bookmark-index="${index}">
           <div class="course-header">
@@ -424,15 +450,26 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
-            <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
-              ⭐
-            </button>
+            <div class="course-actions">
+              <button class="expand-btn" data-bookmark-index="${index}" data-course-key="${courseKey}" title="顯示詳細資訊">
+                <span class="expand-icon">▼</span>
+              </button>
+              <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
+                ⭐
+              </button>
+            </div>
           </div>
           ${pathsHtml}
           ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+
+          <!-- 詳細資訊區域（可收合） -->
+          <div class="course-details" id="details-${courseKey}" style="display: none;">
+            <div class="details-loading">載入中...</div>
+          </div>
+
           ${clickHint}
         </div>
       `;
@@ -464,5 +501,232 @@ document.addEventListener('DOMContentLoaded', function() {
         displayBookmarks(); // 重新顯示書籤列表
       });
     });
+
+    // 為展開按鈕添加點擊事件
+    const expandBtns = bookmarksList.querySelectorAll('.expand-btn');
+    expandBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkedCourses[bookmarkIndex];
+        toggleCourseDetails(this, course, courseKey);
+      });
+    });
+  }
+
+  // ==================== 課程詳細資訊功能 ====================
+
+  // 切換課程詳細資訊顯示
+  async function toggleCourseDetails(btn, course, courseKey) {
+    const detailsDiv = document.getElementById(`details-${courseKey}`);
+    const icon = btn.querySelector('.expand-icon');
+
+    if (detailsDiv.style.display === 'none') {
+      // 展開
+      detailsDiv.style.display = 'block';
+      icon.textContent = '▲';
+      btn.classList.add('expanded');
+
+      // 如果還沒載入過詳細資訊，則載入
+      if (!courseDetailsCache[courseKey]) {
+        await loadCourseDetails(course, courseKey, detailsDiv);
+      }
+    } else {
+      // 收合
+      detailsDiv.style.display = 'none';
+      icon.textContent = '▼';
+      btn.classList.remove('expanded');
+    }
+  }
+
+  // 載入課程詳細資訊
+  async function loadCourseDetails(course, courseKey, detailsDiv) {
+    if (!course.cos_id || !course.acy || !course.sem) {
+      detailsDiv.innerHTML = '<div class="details-error">⚠️ 無法載入課程詳細資訊：缺少課程編號</div>';
+      return;
+    }
+
+    try {
+      // 構建課程綱要 URL
+      const outlineUrl = `https://timetable.nycu.edu.tw/?r=main/crsoutline&Acy=${course.acy}&Sem=${course.sem}&CrsNo=${course.cos_id}&lang=zh-tw`;
+
+      // 使用 fetch 抓取課程綱要頁面
+      const response = await fetch(outlineUrl);
+      const html = await response.text();
+
+      // 解析 HTML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // 提取課程資訊
+      const details = extractCourseDetails(doc, course);
+
+      // 快取結果
+      courseDetailsCache[courseKey] = details;
+
+      // 顯示詳細資訊
+      displayCourseDetails(details, detailsDiv);
+
+    } catch (error) {
+      console.error('載入課程詳細資訊失敗:', error);
+      detailsDiv.innerHTML = '<div class="details-error">⚠️ 載入失敗，請稍後再試</div>';
+    }
+  }
+
+  // 從 HTML 中提取課程詳細資訊
+  function extractCourseDetails(doc, course) {
+    const details = {
+      時間地點: course.time && course.room ? `${course.time} / ${course.room}` : (course.time || '未提供'),
+      學分: course.credits || '未提供',
+      必選修: '未提供',
+      人數限制: '未提供',
+      課程大綱: '未提供',
+      教學目標: '未提供',
+      評分方式: '未提供',
+      指定用書: '未提供',
+      參考書籍: '未提供',
+      先修課程: '未提供',
+      教學方式: '未提供',
+      TA: '未提供',
+      備註: '未提供'
+    };
+
+    try {
+      // 嘗試從表格中提取資訊
+      const tables = doc.querySelectorAll('table');
+
+      tables.forEach(table => {
+        const rows = table.querySelectorAll('tr');
+
+        rows.forEach(row => {
+          const cells = row.querySelectorAll('td, th');
+          if (cells.length >= 2) {
+            const label = cells[0].textContent.trim();
+            const value = cells[1].textContent.trim();
+
+            // 根據標籤匹配欄位
+            if (label.includes('必選修') || label.includes('必/選修')) {
+              details.必選修 = value;
+            } else if (label.includes('人數') || label.includes('限修人數')) {
+              details.人數限制 = value;
+            } else if (label.includes('課程大綱') || label.includes('課程概述')) {
+              details.課程大綱 = value;
+            } else if (label.includes('教學目標') || label.includes('課程目標')) {
+              details.教學目標 = value;
+            } else if (label.includes('評分方式') || label.includes('評量方式') || label.includes('成績考核')) {
+              details.評分方式 = value;
+            } else if (label.includes('指定用書') || label.includes('教科書')) {
+              details.指定用書 = value;
+            } else if (label.includes('參考書') || label.includes('參考資料')) {
+              details.參考書籍 = value;
+            } else if (label.includes('先修課程') || label.includes('擋修')) {
+              details.先修課程 = value;
+            } else if (label.includes('教學方式') || label.includes('授課方式')) {
+              details.教學方式 = value;
+            } else if (label.includes('TA') || label.includes('助教')) {
+              details.TA = value;
+            } else if (label.includes('備註') || label.includes('其他')) {
+              details.備註 = value;
+            }
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error('解析課程詳細資訊失敗:', error);
+    }
+
+    return details;
+  }
+
+  // 顯示課程詳細資訊
+  function displayCourseDetails(details, detailsDiv) {
+    const html = `
+      <div class="details-content">
+        <div class="details-section">
+          <div class="details-title">📋 基本資訊</div>
+          <div class="details-grid">
+            <div class="detail-item">
+              <span class="detail-label">時間地點：</span>
+              <span class="detail-value">${details.時間地點}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">學分：</span>
+              <span class="detail-value">${details.學分}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">必選修：</span>
+              <span class="detail-value ${getRequiredClass(details.必選修)}">${details.必選修}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">人數限制：</span>
+              <span class="detail-value">${details.人數限制}</span>
+            </div>
+          </div>
+        </div>
+
+        ${details.評分方式 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📊 評分方式</div>
+          <div class="detail-text">${details.評分方式}</div>
+        </div>
+        ` : ''}
+
+        ${details.課程大綱 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📝 課程大綱</div>
+          <div class="detail-text">${details.課程大綱}</div>
+        </div>
+        ` : ''}
+
+        ${details.教學目標 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">🎯 教學目標</div>
+          <div class="detail-text">${details.教學目標}</div>
+        </div>
+        ` : ''}
+
+        ${details.先修課程 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📚 先修課程</div>
+          <div class="detail-text">${details.先修課程}</div>
+        </div>
+        ` : ''}
+
+        ${details.指定用書 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📖 指定用書</div>
+          <div class="detail-text">${details.指定用書}</div>
+        </div>
+        ` : ''}
+
+        ${details.參考書籍 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📚 參考書籍</div>
+          <div class="detail-text">${details.參考書籍}</div>
+        </div>
+        ` : ''}
+
+        ${details.備註 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">💡 備註</div>
+          <div class="detail-text">${details.備註}</div>
+        </div>
+        ` : ''}
+      </div>
+    `;
+
+    detailsDiv.innerHTML = html;
+  }
+
+  // 根據必選修狀態返回 CSS class
+  function getRequiredClass(required) {
+    if (required.includes('必修')) {
+      return 'required-course';
+    } else if (required.includes('選修')) {
+      return 'elective-course';
+    }
+    return '';
   }
 });
