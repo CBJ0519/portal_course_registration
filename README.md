@@ -1,6 +1,6 @@
 # NYCU 課程搜尋助手 Chrome Extension
 
-這是一個 Chrome 擴充功能，用於快速搜尋 NYCU 課程並查看開課單位。
+這是一個 Chrome 擴充功能，用於快速搜尋 NYCU 課程並查看開課單位。</br>
 擴充功能連結：https://chromewebstore.google.com/detail/nycu-%E8%AA%B2%E7%A8%8B%E6%90%9C%E5%B0%8B%E5%8A%A9%E6%89%8B/miaebenciplpjnmbfnhibkkgfeiciijn?utm_source=item-share-cp
 
 ## 功能
