@@ -25,5 +25,10 @@
       "matches": ["https://timetable.nycu.edu.tw/*"],
       "js": ["content.js"]
     }
-  ]
+  ],
+  "icons": {
+    "16": "128.png",
+    "48": "128.png",
+    "128": "128.png"
+  }
 }
