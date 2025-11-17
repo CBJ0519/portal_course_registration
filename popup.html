@@ -12,6 +12,14 @@
 
     <div id="dataStatus" class="data-status"></div>
 
+    <!-- 分頁切換按鈕 -->
+    <div class="tab-buttons">
+      <button id="searchTab" class="tab-btn active">🔍 搜尋課程</button>
+      <button id="bookmarksTab" class="tab-btn">⭐ 我的書籤 <span id="bookmarkCount" class="bookmark-count">0</span></button>
+    </div>
+
+    <!-- 搜尋區域 -->
+    <div id="searchArea" class="tab-content active">
     <div class="search-box">
       <input
         type="text"
@@ -50,6 +58,26 @@
     <div class="footer">
       <button id="refreshData">重新載入課程資料（約需 5 分鐘）</button>
     </div>
+    </div>
+    <!-- 結束搜尋區域 -->
+
+    <!-- 書籤區域 -->
+    <div id="bookmarksArea" class="tab-content">
+      <div class="bookmarks-header">
+        <h2>我的書籤課程</h2>
+        <button id="clearAllBookmarks" class="clear-btn" style="display: none;">🗑️ 清空所有書籤</button>
+      </div>
+      <div id="bookmarksList" class="results">
+        <div class="placeholder">
+          尚未加入任何書籤<br>
+          <span style="font-size: 12px; color: #999; margin-top: 8px; display: block;">
+            在搜尋結果中點擊星號圖示即可加入書籤
+          </span>
+        </div>
+      </div>
+    </div>
+    <!-- 結束書籤區域 -->
+
   </div>
 
   <script src="popup.js"></script>

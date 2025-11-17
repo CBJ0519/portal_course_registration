@@ -7,6 +7,22 @@ document.addEventListener('DOMContentLoaded', function() {
   const loadingDiv = document.getElementById('loading');
   const dataStatusDiv = document.getElementById('dataStatus');
 
+  // 分頁相關元素
+  const searchTab = document.getElementById('searchTab');
+  const bookmarksTab = document.getElementById('bookmarksTab');
+  const searchArea = document.getElementById('searchArea');
+  const bookmarksArea = document.getElementById('bookmarksArea');
+  const bookmarksList = document.getElementById('bookmarksList');
+  const bookmarkCount = document.getElementById('bookmarkCount');
+  const clearAllBookmarks = document.getElementById('clearAllBookmarks');
+
+  // 書籤資料
+  let bookmarks = {};
+  let currentResults = []; // 保存當前搜尋結果
+
+  // 載入書籤資料
+  loadBookmarks();
+
   // 顯示資料狀態
   updateDataStatus();
 
@@ -28,6 +44,31 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('即將開始重新載入課程資料，約需 5 分鐘，請稍候...');
       });
     });
+  });
+
+  // 分頁切換事件
+  searchTab.addEventListener('click', function() {
+    searchTab.classList.add('active');
+    bookmarksTab.classList.remove('active');
+    searchArea.classList.add('active');
+    bookmarksArea.classList.remove('active');
+  });
+
+  bookmarksTab.addEventListener('click', function() {
+    bookmarksTab.classList.add('active');
+    searchTab.classList.remove('active');
+    bookmarksArea.classList.add('active');
+    searchArea.classList.remove('active');
+    displayBookmarks();
+  });
+
+  // 清空所有書籤
+  clearAllBookmarks.addEventListener('click', function() {
+    if (confirm('確定要清空所有書籤嗎？')) {
+      bookmarks = {};
+      saveBookmarks();
+      displayBookmarks();
+    }
   });
 
   // 執行搜尋
@@ -63,6 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
       setTimeout(() => {
         // 搜尋課程
         const results = searchCourses(result.courseData, query);
+        currentResults = results; // 保存搜尋結果
 
         // 隱藏載入動畫並顯示結果
         loadingDiv.style.display = 'none';
@@ -166,10 +208,23 @@ document.addEventListener('DOMContentLoaded', function() {
       const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
       const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
 
+      // 檢查是否已加入書籤
+      const courseKey = getCourseKey(course);
+      const isBookmarked = bookmarks[courseKey] !== undefined;
+      const bookmarkIcon = isBookmarked ? '⭐' : '☆';
+      const bookmarkClass = isBookmarked ? 'bookmarked' : '';
+
       return `
         <div class="course-item ${clickableClass}" data-course-index="${index}">
-          <div class="course-code">${course.code}</div>
-          <div class="course-name">${course.name}</div>
+          <div class="course-header">
+            <div class="course-header-left">
+              <div class="course-code">${course.code}</div>
+              <div class="course-name">${course.name}</div>
+            </div>
+            <button class="bookmark-btn ${bookmarkClass}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
+              ${bookmarkIcon}
+            </button>
+          </div>
           ${pathsHtml}
           ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
@@ -185,10 +240,27 @@ document.addEventListener('DOMContentLoaded', function() {
     // 為每個課程卡片添加點擊事件
     const courseItems = resultsDiv.querySelectorAll('.course-item-clickable');
     courseItems.forEach(item => {
-      item.addEventListener('click', function() {
+      item.addEventListener('click', function(e) {
+        // 如果點擊的是書籤按鈕，不觸發課程卡片點擊
+        if (e.target.closest('.bookmark-btn')) {
+          return;
+        }
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = results[courseIndex];
         openCourseOutline(course);
+      });
+    });
+
+    // 為每個書籤按鈕添加點擊事件
+    const bookmarkBtns = resultsDiv.querySelectorAll('.bookmark-btn');
+    bookmarkBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 阻止事件冒泡
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const course = results[courseIndex];
+        toggleBookmark(course);
+        // 重新顯示結果以更新書籤狀態
+        displayResults(results);
       });
     });
   }
@@ -247,6 +319,150 @@ document.addEventListener('DOMContentLoaded', function() {
 
       dataStatusDiv.innerHTML = `<span class="${statusClass}">${statusText}</span>`;
       dataStatusDiv.style.display = 'block';
+    });
+  }
+
+  // ==================== 書籤相關函數 ====================
+
+  // 生成課程唯一鍵
+  function getCourseKey(course) {
+    return course.cos_id || course.code || `${course.name}_${course.teacher}`;
+  }
+
+  // 載入書籤資料
+  function loadBookmarks() {
+    chrome.storage.local.get(['courseBookmarks'], function(result) {
+      bookmarks = result.courseBookmarks || {};
+      updateBookmarkCount();
+    });
+  }
+
+  // 儲存書籤資料
+  function saveBookmarks() {
+    chrome.storage.local.set({ courseBookmarks: bookmarks }, function() {
+      updateBookmarkCount();
+    });
+  }
+
+  // 切換書籤狀態
+  function toggleBookmark(course) {
+    const courseKey = getCourseKey(course);
+
+    if (bookmarks[courseKey]) {
+      // 移除書籤
+      delete bookmarks[courseKey];
+    } else {
+      // 加入書籤
+      bookmarks[courseKey] = {
+        ...course,
+        bookmarkedAt: Date.now() // 記錄加入書籤的時間
+      };
+    }
+
+    saveBookmarks();
+  }
+
+  // 更新書籤數量顯示
+  function updateBookmarkCount() {
+    const count = Object.keys(bookmarks).length;
+    bookmarkCount.textContent = count;
+
+    // 如果有書籤，顯示清空按鈕
+    if (count > 0) {
+      clearAllBookmarks.style.display = 'inline-block';
+    } else {
+      clearAllBookmarks.style.display = 'none';
+    }
+  }
+
+  // 顯示書籤列表
+  function displayBookmarks() {
+    const bookmarkedCourses = Object.values(bookmarks);
+
+    if (bookmarkedCourses.length === 0) {
+      bookmarksList.innerHTML = `
+        <div class="placeholder">
+          尚未加入任何書籤<br>
+          <span style="font-size: 12px; color: #999; margin-top: 8px; display: block;">
+            在搜尋結果中點擊星號圖示即可加入書籤
+          </span>
+        </div>
+      `;
+      return;
+    }
+
+    // 按加入書籤的時間排序（最新的在前）
+    bookmarkedCourses.sort((a, b) => (b.bookmarkedAt || 0) - (a.bookmarkedAt || 0));
+
+    const html = bookmarkedCourses.map((course, index) => {
+      // 建立所有路徑的 HTML
+      let pathsHtml = '';
+      if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
+        pathsHtml += `<div class="path-count">📂 找到 ${course.paths.length} 個選課路徑：</div>`;
+
+        pathsHtml += course.paths.map((path, index) => {
+          const pathParts = [];
+          if (path.type) pathParts.push(path.type);
+          if (path.category) pathParts.push(path.category);
+          if (path.college) pathParts.push(path.college);
+          if (path.department) pathParts.push(path.department);
+          pathParts.push('全部');
+
+          const prefix = course.paths.length > 1 ? `${index + 1}. ` : '📍 ';
+          return `<div class="course-path">${prefix}${pathParts.join(' / ')}</div>`;
+        }).join('');
+      }
+
+      const hasCourseOutline = course.cos_id && course.acy && course.sem;
+      const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
+      const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
+
+      return `
+        <div class="course-item ${clickableClass}" data-bookmark-index="${index}">
+          <div class="course-header">
+            <div class="course-header-left">
+              <div class="course-code">${course.code}</div>
+              <div class="course-name">${course.name}</div>
+            </div>
+            <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
+              ⭐
+            </button>
+          </div>
+          ${pathsHtml}
+          ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
+          ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
+          ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
+          ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+          ${clickHint}
+        </div>
+      `;
+    }).join('');
+
+    bookmarksList.innerHTML = html;
+
+    // 為書籤課程卡片添加點擊事件
+    const courseItems = bookmarksList.querySelectorAll('.course-item-clickable');
+    courseItems.forEach(item => {
+      item.addEventListener('click', function(e) {
+        if (e.target.closest('.bookmark-btn')) {
+          return;
+        }
+        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
+        const course = bookmarkedCourses[bookmarkIndex];
+        openCourseOutline(course);
+      });
+    });
+
+    // 為書籤按鈕添加點擊事件
+    const bookmarkBtns = bookmarksList.querySelectorAll('.bookmark-btn');
+    bookmarkBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
+        const course = bookmarkedCourses[bookmarkIndex];
+        toggleBookmark(course);
+        displayBookmarks(); // 重新顯示書籤列表
+      });
     });
   }
 });
