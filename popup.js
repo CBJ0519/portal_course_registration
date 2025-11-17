@@ -580,58 +580,53 @@ document.addEventListener('DOMContentLoaded', function() {
       時間地點: course.time && course.room ? `${course.time} / ${course.room}` : (course.time || '未提供'),
       學分: course.credits || '未提供',
       必選修: '未提供',
-      人數限制: '未提供',
-      課程大綱: '未提供',
-      教學目標: '未提供',
-      評分方式: '未提供',
-      指定用書: '未提供',
-      參考書籍: '未提供',
-      先修課程: '未提供',
-      教學方式: '未提供',
-      TA: '未提供',
+      授課教師: '未提供',
+      先修科目: '未提供',
+      課程概述: '未提供',
+      教科書: '未提供',
+      評量方式: '未提供',
+      每週進度: [],
       備註: '未提供'
     };
 
     try {
-      // 嘗試從表格中提取資訊
-      const tables = doc.querySelectorAll('table');
+      // 取得整個頁面的文字內容
+      const bodyText = doc.body.textContent;
 
-      tables.forEach(table => {
-        const rows = table.querySelectorAll('tr');
+      // 使用正則表達式提取欄位（處理冒號分隔的格式）
+      const patterns = {
+        必選修: /必\/選修[：:]\s*([^\n]+)/,
+        授課教師: /授課教師[：:]\s*([^\n]+)/,
+        先修科目: /先修科目或先備能力[：:]\s*([^\n]+(?:\n(?![\u4e00-\u9fa5]+[：:]).+)*)/,
+        課程概述: /課程概述與目標[：:]\s*([^\n]+(?:\n(?![\u4e00-\u9fa5]+[：:]).+)*)/,
+        教科書: /教科書[：:][^：\n]*\n([^\n]+(?:\n(?![一二三四五六七八九十\d週]|師生|備註|每週).+)*)/,
+        評量方式: /學期作業、考試、評量[：:]\s*([^\n]+(?:\n(?![\d\.]|教學方法).+)*)/,
+        備註: /備註[：:]\s*([^\n]+(?:\n(?!$).+)*)/
+      };
 
-        rows.forEach(row => {
-          const cells = row.querySelectorAll('td, th');
-          if (cells.length >= 2) {
-            const label = cells[0].textContent.trim();
-            const value = cells[1].textContent.trim();
+      // 提取各欄位
+      for (const [key, pattern] of Object.entries(patterns)) {
+        const match = bodyText.match(pattern);
+        if (match && match[1]) {
+          details[key] = match[1].trim();
+        }
+      }
 
-            // 根據標籤匹配欄位
-            if (label.includes('必選修') || label.includes('必/選修')) {
-              details.必選修 = value;
-            } else if (label.includes('人數') || label.includes('限修人數')) {
-              details.人數限制 = value;
-            } else if (label.includes('課程大綱') || label.includes('課程概述')) {
-              details.課程大綱 = value;
-            } else if (label.includes('教學目標') || label.includes('課程目標')) {
-              details.教學目標 = value;
-            } else if (label.includes('評分方式') || label.includes('評量方式') || label.includes('成績考核')) {
-              details.評分方式 = value;
-            } else if (label.includes('指定用書') || label.includes('教科書')) {
-              details.指定用書 = value;
-            } else if (label.includes('參考書') || label.includes('參考資料')) {
-              details.參考書籍 = value;
-            } else if (label.includes('先修課程') || label.includes('擋修')) {
-              details.先修課程 = value;
-            } else if (label.includes('教學方式') || label.includes('授課方式')) {
-              details.教學方式 = value;
-            } else if (label.includes('TA') || label.includes('助教')) {
-              details.TA = value;
-            } else if (label.includes('備註') || label.includes('其他')) {
-              details.備註 = value;
-            }
+      // 特別處理每週進度（提取前5週作為預覽）
+      const weeklyMatch = bodyText.match(/每週進度表[\s\S]*?週次\s+上課日期\s+課程進度[^\n]*([\s\S]*?)(?:教師授課總時數|$)/);
+      if (weeklyMatch) {
+        const weekLines = weeklyMatch[1].split('\n')
+          .filter(line => line.trim() && /^\d+\s+\d{4}-\d{2}-\d{2}/.test(line.trim()))
+          .slice(0, 5); // 只取前5週
+
+        details.每週進度 = weekLines.map(line => {
+          const parts = line.trim().split(/\s{2,}/); // 使用多個空格分割
+          if (parts.length >= 3) {
+            return `第${parts[0]}週：${parts[2]}`;
           }
+          return line.trim();
         });
-      });
+      }
 
     } catch (error) {
       console.error('解析課程詳細資訊失敗:', error);
@@ -659,52 +654,47 @@ document.addEventListener('DOMContentLoaded', function() {
               <span class="detail-label">必選修：</span>
               <span class="detail-value ${getRequiredClass(details.必選修)}">${details.必選修}</span>
             </div>
+            ${details.授課教師 !== '未提供' ? `
             <div class="detail-item">
-              <span class="detail-label">人數限制：</span>
-              <span class="detail-value">${details.人數限制}</span>
+              <span class="detail-label">授課教師：</span>
+              <span class="detail-value">${details.授課教師}</span>
             </div>
+            ` : ''}
           </div>
         </div>
 
-        ${details.評分方式 !== '未提供' ? `
+        ${details.先修科目 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">📊 評分方式</div>
-          <div class="detail-text">${details.評分方式}</div>
+          <div class="details-title">📚 先修科目或先備能力</div>
+          <div class="detail-text">${details.先修科目}</div>
         </div>
         ` : ''}
 
-        ${details.課程大綱 !== '未提供' ? `
+        ${details.課程概述 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">📝 課程大綱</div>
-          <div class="detail-text">${details.課程大綱}</div>
+          <div class="details-title">🎯 課程概述與目標</div>
+          <div class="detail-text">${details.課程概述}</div>
         </div>
         ` : ''}
 
-        ${details.教學目標 !== '未提供' ? `
+        ${details.教科書 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">🎯 教學目標</div>
-          <div class="detail-text">${details.教學目標}</div>
+          <div class="details-title">📖 教科書</div>
+          <div class="detail-text">${details.教科書}</div>
         </div>
         ` : ''}
 
-        ${details.先修課程 !== '未提供' ? `
+        ${details.評量方式 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">📚 先修課程</div>
-          <div class="detail-text">${details.先修課程}</div>
+          <div class="details-title">📊 評量方式</div>
+          <div class="detail-text">${details.評量方式}</div>
         </div>
         ` : ''}
 
-        ${details.指定用書 !== '未提供' ? `
+        ${details.每週進度 && details.每週進度.length > 0 ? `
         <div class="details-section">
-          <div class="details-title">📖 指定用書</div>
-          <div class="detail-text">${details.指定用書}</div>
-        </div>
-        ` : ''}
-
-        ${details.參考書籍 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">📚 參考書籍</div>
-          <div class="detail-text">${details.參考書籍}</div>
+          <div class="details-title">📅 每週進度（前5週預覽）</div>
+          <div class="detail-text">${details.每週進度.join('\n')}</div>
         </div>
         ` : ''}
 
