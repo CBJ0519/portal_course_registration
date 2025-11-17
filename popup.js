@@ -184,13 +184,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const html = results.map((course, index) => {
-      // 建立所有路徑的 HTML
+      // 建立所有路徑的 HTML（收合在按鈕中）
       let pathsHtml = '';
       if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
-        // 顯示路徑數量提示
-        pathsHtml += `<div class="path-count">📂 找到 ${course.paths.length} 個選課路徑：</div>`;
-
-        pathsHtml += course.paths.map((path, index) => {
+        pathsHtml = course.paths.map((path, index) => {
           const pathParts = [];
           if (path.type) pathParts.push(path.type);
           if (path.category) pathParts.push(path.category);
@@ -216,47 +213,75 @@ document.addEventListener('DOMContentLoaded', function() {
       const bookmarkClass = isBookmarked ? 'bookmarked' : '';
 
       return `
-        <div class="course-item ${clickableClass}" data-course-index="${index}">
+        <div class="course-item course-item-expandable" data-course-index="${index}" data-course-key="${courseKey}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
             <div class="course-actions">
-              <button class="expand-btn" data-course-index="${index}" data-course-key="${courseKey}" title="顯示詳細資訊">
-                <span class="expand-icon">▼</span>
+              ${hasCourseOutline ? `
+              <button class="outline-btn" data-course-index="${index}" title="開啟課程綱要">
+                📄
               </button>
+              ` : ''}
               <button class="bookmark-btn ${bookmarkClass}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
                 ${bookmarkIcon}
               </button>
             </div>
           </div>
-          ${pathsHtml}
+
           ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <!-- 詳細資訊區域（可收合） -->
-          <div class="course-details" id="details-${courseKey}" style="display: none;">
-            <div class="details-loading">載入中...</div>
-          </div>
+          <div class="expand-hint">💡 點擊卡片查看詳細資訊</div>
 
-          ${clickHint}
+          <!-- 展開內容區域 -->
+          <div class="course-expanded-content" id="expanded-${courseKey}" style="display: none;">
+            <!-- 選課路徑 -->
+            ${pathsHtml ? `
+            <div class="expanded-section">
+              <div class="expanded-section-title">📂 選課路徑 (${course.paths ? course.paths.length : 0})</div>
+              ${pathsHtml}
+            </div>
+            ` : ''}
+
+            <!-- 課程詳細資訊 -->
+            <div class="expanded-section">
+              <div class="expanded-section-title">📋 課程詳細資訊</div>
+              <div class="course-details" id="details-${courseKey}">
+                <div class="details-loading">載入中...</div>
+              </div>
+            </div>
+          </div>
         </div>
       `;
     }).join('');
 
     resultsDiv.innerHTML = html;
 
-    // 為每個課程卡片添加點擊事件
-    const courseItems = resultsDiv.querySelectorAll('.course-item-clickable');
+    // 為每個課程卡片添加點擊事件（展開/收合）
+    const courseItems = resultsDiv.querySelectorAll('.course-item-expandable');
     courseItems.forEach(item => {
       item.addEventListener('click', function(e) {
-        // 如果點擊的是書籤按鈕，不觸發課程卡片點擊
-        if (e.target.closest('.bookmark-btn')) {
+        // 如果點擊的是按鈕，不觸發卡片展開
+        if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
           return;
         }
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const courseKey = this.dataset.courseKey;
+        const course = results[courseIndex];
+        toggleExpandedContent(this, course, courseKey);
+      });
+    });
+
+    // 為課程綱要按鈕添加點擊事件
+    const outlineBtns = resultsDiv.querySelectorAll('.outline-btn');
+    outlineBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = results[courseIndex];
         openCourseOutline(course);
@@ -267,24 +292,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const bookmarkBtns = resultsDiv.querySelectorAll('.bookmark-btn');
     bookmarkBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
-        e.stopPropagation(); // 阻止事件冒泡
+        e.stopPropagation();
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = results[courseIndex];
         toggleBookmark(course);
-        // 重新顯示結果以更新書籤狀態
         displayResults(results);
-      });
-    });
-
-    // 為每個展開按鈕添加點擊事件
-    const expandBtns = resultsDiv.querySelectorAll('.expand-btn');
-    expandBtns.forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation(); // 阻止事件冒泡
-        const courseIndex = parseInt(this.dataset.courseIndex);
-        const courseKey = this.dataset.courseKey;
-        const course = results[courseIndex];
-        toggleCourseDetails(this, course, courseKey);
       });
     });
   }
@@ -419,12 +431,10 @@ document.addEventListener('DOMContentLoaded', function() {
     bookmarkedCourses.sort((a, b) => (b.bookmarkedAt || 0) - (a.bookmarkedAt || 0));
 
     const html = bookmarkedCourses.map((course, index) => {
-      // 建立所有路徑的 HTML
+      // 建立所有路徑的 HTML（收合在按鈕中）
       let pathsHtml = '';
       if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
-        pathsHtml += `<div class="path-count">📂 找到 ${course.paths.length} 個選課路徑：</div>`;
-
-        pathsHtml += course.paths.map((path, index) => {
+        pathsHtml = course.paths.map((path, index) => {
           const pathParts = [];
           if (path.type) pathParts.push(path.type);
           if (path.category) pathParts.push(path.category);
@@ -444,46 +454,75 @@ document.addEventListener('DOMContentLoaded', function() {
       const courseKey = getCourseKey(course);
 
       return `
-        <div class="course-item ${clickableClass}" data-bookmark-index="${index}">
+        <div class="course-item course-item-expandable" data-bookmark-index="${index}" data-course-key="${courseKey}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
             <div class="course-actions">
-              <button class="expand-btn" data-bookmark-index="${index}" data-course-key="${courseKey}" title="顯示詳細資訊">
-                <span class="expand-icon">▼</span>
+              ${hasCourseOutline ? `
+              <button class="outline-btn" data-bookmark-index="${index}" title="開啟課程綱要">
+                📄
               </button>
+              ` : ''}
               <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
                 ⭐
               </button>
             </div>
           </div>
-          ${pathsHtml}
+
           ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <!-- 詳細資訊區域（可收合） -->
-          <div class="course-details" id="details-${courseKey}" style="display: none;">
-            <div class="details-loading">載入中...</div>
-          </div>
+          <div class="expand-hint">💡 點擊卡片查看詳細資訊</div>
 
-          ${clickHint}
+          <!-- 展開內容區域 -->
+          <div class="course-expanded-content" id="expanded-${courseKey}" style="display: none;">
+            <!-- 選課路徑 -->
+            ${pathsHtml ? `
+            <div class="expanded-section">
+              <div class="expanded-section-title">📂 選課路徑 (${course.paths ? course.paths.length : 0})</div>
+              ${pathsHtml}
+            </div>
+            ` : ''}
+
+            <!-- 課程詳細資訊 -->
+            <div class="expanded-section">
+              <div class="expanded-section-title">📋 課程詳細資訊</div>
+              <div class="course-details" id="details-${courseKey}">
+                <div class="details-loading">載入中...</div>
+              </div>
+            </div>
+          </div>
         </div>
       `;
     }).join('');
 
     bookmarksList.innerHTML = html;
 
-    // 為書籤課程卡片添加點擊事件
-    const courseItems = bookmarksList.querySelectorAll('.course-item-clickable');
+    // 為書籤課程卡片添加點擊事件（展開/收合）
+    const courseItems = bookmarksList.querySelectorAll('.course-item-expandable');
     courseItems.forEach(item => {
       item.addEventListener('click', function(e) {
-        if (e.target.closest('.bookmark-btn')) {
+        // 如果點擊的是按鈕，不觸發卡片展開
+        if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
           return;
         }
+        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkedCourses[bookmarkIndex];
+        toggleExpandedContent(this, course, courseKey);
+      });
+    });
+
+    // 為課程綱要按鈕添加點擊事件
+    const outlineBtns = bookmarksList.querySelectorAll('.outline-btn');
+    outlineBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
         const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
         const course = bookmarkedCourses[bookmarkIndex];
         openCourseOutline(course);
@@ -498,35 +537,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
         const course = bookmarkedCourses[bookmarkIndex];
         toggleBookmark(course);
-        displayBookmarks(); // 重新顯示書籤列表
-      });
-    });
-
-    // 為展開按鈕添加點擊事件
-    const expandBtns = bookmarksList.querySelectorAll('.expand-btn');
-    expandBtns.forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const courseKey = this.dataset.courseKey;
-        const course = bookmarkedCourses[bookmarkIndex];
-        toggleCourseDetails(this, course, courseKey);
+        displayBookmarks();
       });
     });
   }
 
   // ==================== 課程詳細資訊功能 ====================
 
-  // 切換課程詳細資訊顯示
-  async function toggleCourseDetails(btn, course, courseKey) {
+  // 切換展開內容顯示
+  async function toggleExpandedContent(cardElement, course, courseKey) {
+    const expandedDiv = document.getElementById(`expanded-${courseKey}`);
     const detailsDiv = document.getElementById(`details-${courseKey}`);
-    const icon = btn.querySelector('.expand-icon');
 
-    if (detailsDiv.style.display === 'none') {
+    if (expandedDiv.style.display === 'none') {
       // 展開
-      detailsDiv.style.display = 'block';
-      icon.textContent = '▲';
-      btn.classList.add('expanded');
+      expandedDiv.style.display = 'block';
+      cardElement.classList.add('expanded');
 
       // 如果還沒載入過詳細資訊，則載入
       if (!courseDetailsCache[courseKey]) {
@@ -534,9 +560,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     } else {
       // 收合
-      detailsDiv.style.display = 'none';
-      icon.textContent = '▼';
-      btn.classList.remove('expanded');
+      expandedDiv.style.display = 'none';
+      cardElement.classList.remove('expanded');
     }
   }
 
