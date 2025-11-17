@@ -548,19 +548,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      // 構建課程綱要 URL
-      const outlineUrl = `https://timetable.nycu.edu.tw/?r=main/crsoutline&Acy=${course.acy}&Sem=${course.sem}&CrsNo=${course.cos_id}&lang=zh-tw`;
+      // 準備 API 請求參數
+      const params = new URLSearchParams({
+        acy: course.acy,
+        sem: course.sem,
+        cos_id: course.cos_id
+      });
 
-      // 使用 fetch 抓取課程綱要頁面
-      const response = await fetch(outlineUrl);
-      const html = await response.text();
+      // 並行請求兩個 API
+      const [baseResponse, descResponse] = await Promise.all([
+        fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        }),
+        fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        })
+      ]);
 
-      // 解析 HTML
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
+      // 解析 JSON 資料
+      const baseData = await baseResponse.json();
+      const descData = await descResponse.json();
 
       // 提取課程資訊
-      const details = extractCourseDetails(doc, course);
+      const details = extractCourseDetailsFromAPI(baseData, descData, course);
 
       // 快取結果
       courseDetailsCache[courseKey] = details;
@@ -574,63 +588,39 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // 從 HTML 中提取課程詳細資訊
-  function extractCourseDetails(doc, course) {
-    const details = {
-      時間地點: course.time && course.room ? `${course.time} / ${course.room}` : (course.time || '未提供'),
-      學分: course.credits || '未提供',
-      必選修: '未提供',
-      授課教師: '未提供',
-      先修科目: '未提供',
-      課程概述: '未提供',
-      教科書: '未提供',
-      評量方式: '未提供',
-      每週進度: [],
-      備註: '未提供'
-    };
-
-    try {
-      // 取得整個頁面的文字內容
-      const bodyText = doc.body.textContent;
-
-      // 使用正則表達式提取欄位（處理冒號分隔的格式）
-      const patterns = {
-        必選修: /必\/選修[：:]\s*([^\n]+)/,
-        授課教師: /授課教師[：:]\s*([^\n]+)/,
-        先修科目: /先修科目或先備能力[：:]\s*([^\n]+(?:\n(?![\u4e00-\u9fa5]+[：:]).+)*)/,
-        課程概述: /課程概述與目標[：:]\s*([^\n]+(?:\n(?![\u4e00-\u9fa5]+[：:]).+)*)/,
-        教科書: /教科書[：:][^：\n]*\n([^\n]+(?:\n(?![一二三四五六七八九十\d週]|師生|備註|每週).+)*)/,
-        評量方式: /學期作業、考試、評量[：:]\s*([^\n]+(?:\n(?![\d\.]|教學方法).+)*)/,
-        備註: /備註[：:]\s*([^\n]+(?:\n(?!$).+)*)/
-      };
-
-      // 提取各欄位
-      for (const [key, pattern] of Object.entries(patterns)) {
-        const match = bodyText.match(pattern);
-        if (match && match[1]) {
-          details[key] = match[1].trim();
+  // 從 API 資料中提取課程詳細資訊
+  function extractCourseDetailsFromAPI(baseData, descData, course) {
+    // 解析時間地點
+    let timeLocation = '未提供';
+    if (baseData.cos_time) {
+      // 解析時間格式：M56R2-EC115[GF],Rabc-EC315[GF]
+      const timeParts = baseData.cos_time.split(',').map(part => {
+        const match = part.match(/^([A-Z]+\d*)-([A-Z0-9]+)/);
+        if (match) {
+          const time = match[1]; // M56R2 或 Rabc
+          const room = match[2]; // EC115
+          return `${time} @ ${room}`;
         }
-      }
-
-      // 特別處理每週進度（提取前5週作為預覽）
-      const weeklyMatch = bodyText.match(/每週進度表[\s\S]*?週次\s+上課日期\s+課程進度[^\n]*([\s\S]*?)(?:教師授課總時數|$)/);
-      if (weeklyMatch) {
-        const weekLines = weeklyMatch[1].split('\n')
-          .filter(line => line.trim() && /^\d+\s+\d{4}-\d{2}-\d{2}/.test(line.trim()))
-          .slice(0, 5); // 只取前5週
-
-        details.每週進度 = weekLines.map(line => {
-          const parts = line.trim().split(/\s{2,}/); // 使用多個空格分割
-          if (parts.length >= 3) {
-            return `第${parts[0]}週：${parts[2]}`;
-          }
-          return line.trim();
-        });
-      }
-
-    } catch (error) {
-      console.error('解析課程詳細資訊失敗:', error);
+        return part;
+      });
+      timeLocation = timeParts.join(', ');
     }
+
+    const details = {
+      時間地點: timeLocation,
+      學分: baseData.cos_credit || course.credits || '未提供',
+      必選修: baseData.sel_type_name || '未提供',
+      授課教師: baseData.tea_name || course.teacher || '未提供',
+      先修科目: descData.crs_prerequisite || '未提供',
+      課程概述: descData.crs_outline || '未提供',
+      教科書: descData.crs_textbook || '未提供',
+      評量方式: descData.crs_exam_score || '未提供',
+      教學方法: descData.crs_teach_method || '未提供',
+      師生晤談: descData.crs_meeting_time && descData.crs_meeting_place
+        ? `${descData.crs_meeting_time} @ ${descData.crs_meeting_place}`
+        : '未提供',
+      聯絡方式: descData.crs_contact || '未提供'
+    };
 
     return details;
   }
@@ -642,7 +632,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="details-section">
           <div class="details-title">📋 基本資訊</div>
           <div class="details-grid">
-            <div class="detail-item">
+            <div class="detail-item" style="grid-column: 1 / -1;">
               <span class="detail-label">時間地點：</span>
               <span class="detail-value">${details.時間地點}</span>
             </div>
@@ -655,7 +645,7 @@ document.addEventListener('DOMContentLoaded', function() {
               <span class="detail-value ${getRequiredClass(details.必選修)}">${details.必選修}</span>
             </div>
             ${details.授課教師 !== '未提供' ? `
-            <div class="detail-item">
+            <div class="detail-item" style="grid-column: 1 / -1;">
               <span class="detail-label">授課教師：</span>
               <span class="detail-value">${details.授課教師}</span>
             </div>
@@ -691,17 +681,24 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         ` : ''}
 
-        ${details.每週進度 && details.每週進度.length > 0 ? `
+        ${details.教學方法 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">📅 每週進度（前5週預覽）</div>
-          <div class="detail-text">${details.每週進度.join('\n')}</div>
+          <div class="details-title">🎓 教學方法</div>
+          <div class="detail-text">${details.教學方法}</div>
         </div>
         ` : ''}
 
-        ${details.備註 !== '未提供' ? `
+        ${details.師生晤談 !== '未提供' ? `
         <div class="details-section">
-          <div class="details-title">💡 備註</div>
-          <div class="detail-text">${details.備註}</div>
+          <div class="details-title">👥 師生晤談時間</div>
+          <div class="detail-text">${details.師生晤談}</div>
+        </div>
+        ` : ''}
+
+        ${details.聯絡方式 !== '未提供' ? `
+        <div class="details-section">
+          <div class="details-title">📧 聯絡方式</div>
+          <div class="detail-text">${details.聯絡方式}</div>
         </div>
         ` : ''}
       </div>
