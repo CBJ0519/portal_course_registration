@@ -60,6 +60,10 @@ async function fetchAllCourses() {
 
     console.log('目前學期:', acysem);
 
+    // 分割學年度和學期，用於課程綱要連結
+    const [acy, sem] = splitAcysem(acysem);
+    console.log('學年度:', acy, '學期:', sem);
+
     const coursesMap = new Map(); // 使用 Map 來合併相同課程的多個路徑
 
     // 獲取所有課程類型
@@ -139,6 +143,9 @@ async function fetchAllCourses() {
             time: formatTime(course.cos_time) || '',
             credits: course.cos_credit || '',
             room: course.cos_room || '',
+            cos_id: course.cos_id || course.cos_code || '', // 課程編號（用於課程綱要連結）
+            acy: acy, // 學年度
+            sem: sem, // 學期
             paths: [currentPath] // 路徑陣列
           });
           newCoursesFromThisDept++;
@@ -600,6 +607,9 @@ function addSampleData() {
       time: '週一 3,4',
       room: 'EC114',
       credits: '3',
+      cos_id: '112500', // 示範課程編號
+      acy: '114', // 示範學年度
+      sem: '2', // 示範學期
       paths: [
         { type: '學士班課程', category: '一般學士班', college: '理學院', department: '應用數學系' }
       ]
@@ -611,6 +621,9 @@ function addSampleData() {
       time: '週二 2,3,4',
       room: 'EC016',
       credits: '3',
+      cos_id: '111501',
+      acy: '114',
+      sem: '2',
       paths: [
         { type: '學士班課程', category: '一般學士班', college: '資訊學院', department: '資訊工程學系' }
       ]
@@ -622,6 +635,9 @@ function addSampleData() {
       time: '週一 3,4',
       room: 'EC114',
       credits: '2',
+      cos_id: '10005',
+      acy: '114',
+      sem: '2',
       paths: [
         { type: '學士班課程', category: '一般學士班', college: '校級', department: '(學士班大一大二不分系)' },
         { type: '學士班課程', category: '一般學士班', college: '醫學院', department: '(醫學系)' }

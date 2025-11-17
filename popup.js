@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    const html = results.map(course => {
+    const html = results.map((course, index) => {
       // 建立所有路徑的 HTML
       let pathsHtml = '';
       if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
@@ -161,8 +161,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }).join('');
       }
 
+      // 檢查是否有課程綱要所需的資訊
+      const hasCourseOutline = course.cos_id && course.acy && course.sem;
+      const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
+      const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
+
       return `
-        <div class="course-item">
+        <div class="course-item ${clickableClass}" data-course-index="${index}">
           <div class="course-code">${course.code}</div>
           <div class="course-name">${course.name}</div>
           ${pathsHtml}
@@ -170,11 +175,37 @@ document.addEventListener('DOMContentLoaded', function() {
           ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+          ${clickHint}
         </div>
       `;
     }).join('');
 
     resultsDiv.innerHTML = html;
+
+    // 為每個課程卡片添加點擊事件
+    const courseItems = resultsDiv.querySelectorAll('.course-item-clickable');
+    courseItems.forEach(item => {
+      item.addEventListener('click', function() {
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const course = results[courseIndex];
+        openCourseOutline(course);
+      });
+    });
+  }
+
+  // 開啟課程綱要頁面
+  function openCourseOutline(course) {
+    if (!course.cos_id || !course.acy || !course.sem) {
+      alert('無法開啟課程綱要：缺少必要資訊');
+      return;
+    }
+
+    // 構建課程綱要 URL
+    // 格式：https://timetable.nycu.edu.tw/?r=main/crsoutline&Acy=114&Sem=2&CrsNo=112500&lang=zh-tw
+    const outlineUrl = `https://timetable.nycu.edu.tw/?r=main/crsoutline&Acy=${course.acy}&Sem=${course.sem}&CrsNo=${course.cos_id}&lang=zh-tw`;
+
+    // 在新分頁開啟
+    chrome.tabs.create({ url: outlineUrl });
   }
 
   // 更新資料狀態顯示
