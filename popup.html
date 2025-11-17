@@ -8,12 +8,17 @@
 </head>
 <body>
   <div class="container">
-    <h1>NYCU 課程搜尋</h1>
+    <!-- 返回按鈕 -->
+    <div id="backButton" class="back-button" style="display: none;">
+      <button id="backBtn">← 返回</button>
+    </div>
+
+    <h1 id="pageTitle">NYCU 課程搜尋</h1>
 
     <div id="dataStatus" class="data-status"></div>
 
     <!-- 分頁切換按鈕 -->
-    <div class="tab-buttons">
+    <div id="tabButtons" class="tab-buttons">
       <button id="searchTab" class="tab-btn active">🔍 搜尋課程</button>
       <button id="bookmarksTab" class="tab-btn">⭐ 我的書籤 <span id="bookmarkCount" class="bookmark-count">0</span></button>
     </div>
@@ -77,6 +82,14 @@
       </div>
     </div>
     <!-- 結束書籤區域 -->
+
+    <!-- 課程詳細資訊頁面 -->
+    <div id="detailPage" class="page-content" style="display: none;">
+      <div id="detailPageContent" class="detail-page-content">
+        <!-- 動態載入課程詳細資訊 -->
+      </div>
+    </div>
+    <!-- 結束詳細資訊頁面 -->
 
   </div>
 

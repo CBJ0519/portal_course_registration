@@ -16,6 +16,14 @@ document.addEventListener('DOMContentLoaded', function() {
   const bookmarkCount = document.getElementById('bookmarkCount');
   const clearAllBookmarks = document.getElementById('clearAllBookmarks');
 
+  // 詳細頁面相關元素
+  const detailPage = document.getElementById('detailPage');
+  const detailPageContent = document.getElementById('detailPageContent');
+  const backButton = document.getElementById('backButton');
+  const backBtn = document.getElementById('backBtn');
+  const pageTitle = document.getElementById('pageTitle');
+  const tabButtons = document.getElementById('tabButtons');
+
   // 書籤資料
   let bookmarks = {};
   let currentResults = []; // 保存當前搜尋結果
@@ -70,6 +78,11 @@ document.addEventListener('DOMContentLoaded', function() {
       saveBookmarks();
       displayBookmarks();
     }
+  });
+
+  // 返回按鈕事件
+  backBtn.addEventListener('click', function() {
+    showListView();
   });
 
   // 執行搜尋
@@ -213,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const bookmarkClass = isBookmarked ? 'bookmarked' : '';
 
       return `
-        <div class="course-item course-item-expandable" data-course-index="${index}" data-course-key="${courseKey}">
+        <div class="course-item course-item-clickable" data-course-index="${index}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
@@ -236,44 +249,24 @@ document.addEventListener('DOMContentLoaded', function() {
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <div class="expand-hint">💡 點擊卡片查看詳細資訊</div>
-
-          <!-- 展開內容區域 -->
-          <div class="course-expanded-content" id="expanded-${courseKey}" style="display: none;">
-            <!-- 選課路徑 -->
-            ${pathsHtml ? `
-            <div class="expanded-section">
-              <div class="expanded-section-title">📂 選課路徑 (${course.paths ? course.paths.length : 0})</div>
-              ${pathsHtml}
-            </div>
-            ` : ''}
-
-            <!-- 課程詳細資訊 -->
-            <div class="expanded-section">
-              <div class="expanded-section-title">📋 課程詳細資訊</div>
-              <div class="course-details" id="details-${courseKey}">
-                <div class="details-loading">載入中...</div>
-              </div>
-            </div>
-          </div>
+          <div class="click-hint">💡 點擊查看完整資訊</div>
         </div>
       `;
     }).join('');
 
     resultsDiv.innerHTML = html;
 
-    // 為每個課程卡片添加點擊事件（展開/收合）
-    const courseItems = resultsDiv.querySelectorAll('.course-item-expandable');
+    // 為每個課程卡片添加點擊事件（切換到詳細頁面）
+    const courseItems = resultsDiv.querySelectorAll('.course-item-clickable');
     courseItems.forEach(item => {
       item.addEventListener('click', function(e) {
-        // 如果點擊的是按鈕，不觸發卡片展開
+        // 如果點擊的是按鈕，不觸發卡片點擊
         if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
           return;
         }
         const courseIndex = parseInt(this.dataset.courseIndex);
-        const courseKey = this.dataset.courseKey;
         const course = results[courseIndex];
-        toggleExpandedContent(this, course, courseKey);
+        showDetailView(course);
       });
     });
 
@@ -454,7 +447,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const courseKey = getCourseKey(course);
 
       return `
-        <div class="course-item course-item-expandable" data-bookmark-index="${index}" data-course-key="${courseKey}">
+        <div class="course-item course-item-clickable" data-bookmark-index="${index}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
@@ -477,44 +470,24 @@ document.addEventListener('DOMContentLoaded', function() {
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <div class="expand-hint">💡 點擊卡片查看詳細資訊</div>
-
-          <!-- 展開內容區域 -->
-          <div class="course-expanded-content" id="expanded-${courseKey}" style="display: none;">
-            <!-- 選課路徑 -->
-            ${pathsHtml ? `
-            <div class="expanded-section">
-              <div class="expanded-section-title">📂 選課路徑 (${course.paths ? course.paths.length : 0})</div>
-              ${pathsHtml}
-            </div>
-            ` : ''}
-
-            <!-- 課程詳細資訊 -->
-            <div class="expanded-section">
-              <div class="expanded-section-title">📋 課程詳細資訊</div>
-              <div class="course-details" id="details-${courseKey}">
-                <div class="details-loading">載入中...</div>
-              </div>
-            </div>
-          </div>
+          <div class="click-hint">💡 點擊查看完整資訊</div>
         </div>
       `;
     }).join('');
 
     bookmarksList.innerHTML = html;
 
-    // 為書籤課程卡片添加點擊事件（展開/收合）
-    const courseItems = bookmarksList.querySelectorAll('.course-item-expandable');
+    // 為書籤課程卡片添加點擊事件（切換到詳細頁面）
+    const courseItems = bookmarksList.querySelectorAll('.course-item-clickable');
     courseItems.forEach(item => {
       item.addEventListener('click', function(e) {
-        // 如果點擊的是按鈕，不觸發卡片展開
+        // 如果點擊的是按鈕，不觸發卡片點擊
         if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
           return;
         }
         const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const courseKey = this.dataset.courseKey;
         const course = bookmarkedCourses[bookmarkIndex];
-        toggleExpandedContent(this, course, courseKey);
+        showDetailView(course);
       });
     });
 
@@ -542,76 +515,138 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ==================== 課程詳細資訊功能 ====================
+  // ==================== 頁面切換功能 ====================
 
-  // 切換展開內容顯示
-  async function toggleExpandedContent(cardElement, course, courseKey) {
-    const expandedDiv = document.getElementById(`expanded-${courseKey}`);
-    const detailsDiv = document.getElementById(`details-${courseKey}`);
+  // 顯示詳細頁面
+  async function showDetailView(course) {
+    // 隱藏列表頁面
+    searchArea.style.display = 'none';
+    bookmarksArea.style.display = 'none';
+    tabButtons.style.display = 'none';
+    dataStatusDiv.style.display = 'none';
 
-    if (expandedDiv.style.display === 'none') {
-      // 展開
-      expandedDiv.style.display = 'block';
-      cardElement.classList.add('expanded');
+    // 顯示詳細頁面
+    detailPage.style.display = 'block';
+    backButton.style.display = 'block';
+    pageTitle.textContent = course.name;
 
-      // 如果還沒載入過詳細資訊，則載入
-      if (!courseDetailsCache[courseKey]) {
-        await loadCourseDetails(course, courseKey, detailsDiv);
+    // 載入詳細資訊
+    detailPageContent.innerHTML = '<div class="details-loading">載入中...</div>';
+
+    // 構建選課路徑 HTML
+    let pathsHtml = '';
+    if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
+      pathsHtml = `
+        <div class="detail-section">
+          <h2 class="detail-section-title">📂 選課路徑</h2>
+          <div class="paths-list">
+            ${course.paths.map((path, index) => {
+              const pathParts = [];
+              if (path.type) pathParts.push(path.type);
+              if (path.category) pathParts.push(path.category);
+              if (path.college) pathParts.push(path.college);
+              if (path.department) pathParts.push(path.department);
+              pathParts.push('全部');
+              const prefix = course.paths.length > 1 ? `${index + 1}. ` : '📍 ';
+              return `<div class="course-path">${prefix}${pathParts.join(' / ')}</div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // 載入課程詳細資訊（從 API）
+    const courseKey = getCourseKey(course);
+    let detailsHtml = '';
+
+    if (!courseDetailsCache[courseKey]) {
+      try {
+        if (course.cos_id && course.acy && course.sem) {
+          const params = new URLSearchParams({
+            acy: course.acy,
+            sem: course.sem,
+            cos_id: course.cos_id
+          });
+
+          const [baseResponse, descResponse] = await Promise.all([
+            fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: params.toString()
+            }),
+            fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: params.toString()
+            })
+          ]);
+
+          const baseData = await baseResponse.json();
+          const descData = await descResponse.json();
+          const details = extractCourseDetailsFromAPI(baseData, descData, course);
+          courseDetailsCache[courseKey] = details;
+        }
+      } catch (error) {
+        console.error('載入課程詳細資訊失敗:', error);
       }
-    } else {
-      // 收合
-      expandedDiv.style.display = 'none';
-      cardElement.classList.remove('expanded');
-    }
-  }
-
-  // 載入課程詳細資訊
-  async function loadCourseDetails(course, courseKey, detailsDiv) {
-    if (!course.cos_id || !course.acy || !course.sem) {
-      detailsDiv.innerHTML = '<div class="details-error">⚠️ 無法載入課程詳細資訊：缺少課程編號</div>';
-      return;
     }
 
-    try {
-      // 準備 API 請求參數
-      const params = new URLSearchParams({
-        acy: course.acy,
-        sem: course.sem,
-        cos_id: course.cos_id
+    if (courseDetailsCache[courseKey]) {
+      detailsHtml = `
+        <div class="detail-section">
+          <h2 class="detail-section-title">📋 課程詳細資訊</h2>
+          ${displayCourseDetailsHTML(courseDetailsCache[courseKey])}
+        </div>
+      `;
+    }
+
+    // 組合完整內容
+    detailPageContent.innerHTML = `
+      <div class="detail-page-header">
+        <div class="detail-course-code">${course.code}</div>
+        <div class="detail-course-name">${course.name}</div>
+        ${course.teacher ? `<div class="detail-course-info">👨‍🏫 授課教師：${course.teacher}</div>` : ''}
+        ${course.credits ? `<div class="detail-course-info">📚 學分：${course.credits}</div>` : ''}
+      </div>
+
+      ${pathsHtml}
+      ${detailsHtml}
+
+      <div class="detail-actions">
+        ${course.cos_id && course.acy && course.sem ? `
+          <button class="detail-outline-btn" id="detailOutlineBtn">📄 開啟課程綱要</button>
+        ` : ''}
+      </div>
+    `;
+
+    // 為課程綱要按鈕添加事件
+    const detailOutlineBtn = document.getElementById('detailOutlineBtn');
+    if (detailOutlineBtn) {
+      detailOutlineBtn.addEventListener('click', function() {
+        openCourseOutline(course);
       });
-
-      // 並行請求兩個 API
-      const [baseResponse, descResponse] = await Promise.all([
-        fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString()
-        }),
-        fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString()
-        })
-      ]);
-
-      // 解析 JSON 資料
-      const baseData = await baseResponse.json();
-      const descData = await descResponse.json();
-
-      // 提取課程資訊
-      const details = extractCourseDetailsFromAPI(baseData, descData, course);
-
-      // 快取結果
-      courseDetailsCache[courseKey] = details;
-
-      // 顯示詳細資訊
-      displayCourseDetails(details, detailsDiv);
-
-    } catch (error) {
-      console.error('載入課程詳細資訊失敗:', error);
-      detailsDiv.innerHTML = '<div class="details-error">⚠️ 載入失敗，請稍後再試</div>';
     }
   }
+
+  // 返回列表頁面
+  function showListView() {
+    // 隱藏詳細頁面
+    detailPage.style.display = 'none';
+    backButton.style.display = 'none';
+    pageTitle.textContent = 'NYCU 課程搜尋';
+
+    // 顯示列表頁面
+    tabButtons.style.display = 'flex';
+    dataStatusDiv.style.display = 'block';
+
+    // 恢復到之前的分頁
+    if (searchTab.classList.contains('active')) {
+      searchArea.style.display = 'block';
+    } else {
+      bookmarksArea.style.display = 'block';
+    }
+  }
+
 
   // 從 API 資料中提取課程詳細資訊
   function extractCourseDetailsFromAPI(baseData, descData, course) {
@@ -650,12 +685,12 @@ document.addEventListener('DOMContentLoaded', function() {
     return details;
   }
 
-  // 顯示課程詳細資訊
-  function displayCourseDetails(details, detailsDiv) {
-    const html = `
+  // 生成課程詳細資訊 HTML
+  function displayCourseDetailsHTML(details) {
+    return `
       <div class="details-content">
-        <div class="details-section">
-          <div class="details-title">📋 基本資訊</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">基本資訊</div>
           <div class="details-grid">
             <div class="detail-item" style="grid-column: 1 / -1;">
               <span class="detail-label">時間地點：</span>
@@ -669,67 +704,59 @@ document.addEventListener('DOMContentLoaded', function() {
               <span class="detail-label">必選修：</span>
               <span class="detail-value ${getRequiredClass(details.必選修)}">${details.必選修}</span>
             </div>
-            ${details.授課教師 !== '未提供' ? `
-            <div class="detail-item" style="grid-column: 1 / -1;">
-              <span class="detail-label">授課教師：</span>
-              <span class="detail-value">${details.授課教師}</span>
-            </div>
-            ` : ''}
           </div>
         </div>
 
         ${details.先修科目 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">📚 先修科目或先備能力</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">📚 先修科目或先備能力</div>
           <div class="detail-text">${details.先修科目}</div>
         </div>
         ` : ''}
 
         ${details.課程概述 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">🎯 課程概述與目標</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">🎯 課程概述與目標</div>
           <div class="detail-text">${details.課程概述}</div>
         </div>
         ` : ''}
 
         ${details.教科書 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">📖 教科書</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">📖 教科書</div>
           <div class="detail-text">${details.教科書}</div>
         </div>
         ` : ''}
 
         ${details.評量方式 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">📊 評量方式</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">📊 評量方式</div>
           <div class="detail-text">${details.評量方式}</div>
         </div>
         ` : ''}
 
         ${details.教學方法 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">🎓 教學方法</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">🎓 教學方法</div>
           <div class="detail-text">${details.教學方法}</div>
         </div>
         ` : ''}
 
         ${details.師生晤談 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">👥 師生晤談時間</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">👥 師生晤談時間</div>
           <div class="detail-text">${details.師生晤談}</div>
         </div>
         ` : ''}
 
         ${details.聯絡方式 !== '未提供' ? `
-        <div class="details-section">
-          <div class="details-title">📧 聯絡方式</div>
+        <div class="details-subsection">
+          <div class="details-subtitle">📧 聯絡方式</div>
           <div class="detail-text">${details.聯絡方式}</div>
         </div>
         ` : ''}
       </div>
     `;
-
-    detailsDiv.innerHTML = html;
   }
 
   // 根據必選修狀態返回 CSS class
