@@ -214,11 +214,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }).join('');
       }
 
-      // 檢查是否有課程綱要所需的資訊
-      const hasCourseOutline = course.cos_id && course.acy && course.sem;
-      const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
-      const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
-
       // 檢查是否已加入書籤
       const courseKey = getCourseKey(course);
       const isBookmarked = bookmarks[courseKey] !== undefined;
@@ -226,18 +221,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const bookmarkClass = isBookmarked ? 'bookmarked' : '';
 
       return `
-        <div class="course-item course-item-clickable" data-course-index="${index}">
+        <div class="course-item" data-course-index="${index}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
             <div class="course-actions">
-              ${hasCourseOutline ? `
-              <button class="outline-btn" data-course-index="${index}" title="開啟課程綱要">
-                📄
-              </button>
-              ` : ''}
               <button class="bookmark-btn ${bookmarkClass}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
                 ${bookmarkIcon}
               </button>
@@ -249,35 +239,23 @@ document.addEventListener('DOMContentLoaded', function() {
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <div class="click-hint">💡 點擊查看完整資訊</div>
+          <button class="view-detail-btn" data-course-index="${index}">
+            查看完整資訊
+          </button>
         </div>
       `;
     }).join('');
 
     resultsDiv.innerHTML = html;
 
-    // 為每個課程卡片添加點擊事件（切換到詳細頁面）
-    const courseItems = resultsDiv.querySelectorAll('.course-item-clickable');
-    courseItems.forEach(item => {
-      item.addEventListener('click', function(e) {
-        // 如果點擊的是按鈕，不觸發卡片點擊
-        if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
-          return;
-        }
-        const courseIndex = parseInt(this.dataset.courseIndex);
-        const course = results[courseIndex];
-        showDetailView(course);
-      });
-    });
-
-    // 為課程綱要按鈕添加點擊事件
-    const outlineBtns = resultsDiv.querySelectorAll('.outline-btn');
-    outlineBtns.forEach(btn => {
+    // 為「查看完整資訊」按鈕添加點擊事件
+    const viewDetailBtns = resultsDiv.querySelectorAll('.view-detail-btn');
+    viewDetailBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = results[courseIndex];
-        openCourseOutline(course);
+        showDetailView(course);
       });
     });
 
@@ -440,25 +418,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }).join('');
       }
 
-      const hasCourseOutline = course.cos_id && course.acy && course.sem;
-      const clickableClass = hasCourseOutline ? 'course-item-clickable' : '';
-      const clickHint = hasCourseOutline ? '<div class="click-hint">💡 點擊查看課程綱要</div>' : '';
-
       const courseKey = getCourseKey(course);
 
       return `
-        <div class="course-item course-item-clickable" data-bookmark-index="${index}">
+        <div class="course-item" data-bookmark-index="${index}">
           <div class="course-header">
             <div class="course-header-left">
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
             </div>
             <div class="course-actions">
-              ${hasCourseOutline ? `
-              <button class="outline-btn" data-bookmark-index="${index}" title="開啟課程綱要">
-                📄
-              </button>
-              ` : ''}
               <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
                 ⭐
               </button>
@@ -470,35 +439,23 @@ document.addEventListener('DOMContentLoaded', function() {
           ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
           ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
 
-          <div class="click-hint">💡 點擊查看完整資訊</div>
+          <button class="view-detail-btn" data-bookmark-index="${index}">
+            查看完整資訊
+          </button>
         </div>
       `;
     }).join('');
 
     bookmarksList.innerHTML = html;
 
-    // 為書籤課程卡片添加點擊事件（切換到詳細頁面）
-    const courseItems = bookmarksList.querySelectorAll('.course-item-clickable');
-    courseItems.forEach(item => {
-      item.addEventListener('click', function(e) {
-        // 如果點擊的是按鈕，不觸發卡片點擊
-        if (e.target.closest('.bookmark-btn') || e.target.closest('.outline-btn')) {
-          return;
-        }
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const course = bookmarkedCourses[bookmarkIndex];
-        showDetailView(course);
-      });
-    });
-
-    // 為課程綱要按鈕添加點擊事件
-    const outlineBtns = bookmarksList.querySelectorAll('.outline-btn');
-    outlineBtns.forEach(btn => {
+    // 為「查看完整資訊」按鈕添加點擊事件
+    const viewDetailBtns = bookmarksList.querySelectorAll('.view-detail-btn');
+    viewDetailBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
         const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
         const course = bookmarkedCourses[bookmarkIndex];
-        openCourseOutline(course);
+        showDetailView(course);
       });
     });
 

@@ -186,28 +186,26 @@ h2 {
   background: #f9f9f9;
 }
 
-.course-item-clickable {
+/* 查看詳細資訊按鈕 */
+.view-detail-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #64B5F6 0%, #2196F3 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
 }
 
-.course-item-clickable:hover {
-  background: #e8f5e9 !important;
-  border-left: 4px solid #4CAF50;
-  padding-left: 8px;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
-}
-
-.click-hint {
-  font-size: 11px;
-  color: #4CAF50;
-  margin-top: 8px;
-  font-weight: 500;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.course-item-clickable:hover .click-hint {
-  opacity: 1;
+.view-detail-btn:hover {
+  background: linear-gradient(135deg, #42A5F5 0%, #1976D2 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(33, 150, 243, 0.4);
 }
 
 .course-code {
@@ -572,31 +570,6 @@ h2 {
   background: linear-gradient(135deg, #FFE082 0%, #FFD54F 100%);
   transform: scale(1.15) rotate(15deg);
 }
-
-/* 課程綱要按鈕 */
-.outline-btn {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: #fff;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.3s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.outline-btn:hover {
-  background: #E3F2FD;
-  border-color: #2196F3;
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
-}
-
 
 @keyframes slideDown {
   from {
