@@ -142,6 +142,12 @@ document.addEventListener('DOMContentLoaded', function() {
     return abbrIndex === abbr.length;
   }
 
+  // 判斷關鍵字是否為時間相關
+  function isTimeKeyword(keyword) {
+    const timeKeywords = ['週一', '週二', '週三', '週四', '週五', '週六', '週日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    return timeKeywords.includes(keyword);
+  }
+
   // 搜尋課程函數
   function searchCourses(courses, query) {
     // 將查詢字串以空格分割成多個關鍵字
@@ -159,6 +165,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const teacher = course.teacher ? course.teacher.toLowerCase() : '';
         const time = course.time ? course.time.toLowerCase() : '';
         const room = course.room ? course.room.toLowerCase() : '';
+
+        // 如果是時間相關關鍵字，只在 time 欄位搜尋
+        if (isTimeKeyword(keyword)) {
+          return time.includes(keyword);
+        }
 
         // 基本欄位搜尋：包含關鍵字或關鍵字是欄位的簡稱
         if (courseName.includes(keyword) || isAbbreviation(keyword, courseName) ||
