@@ -133,14 +133,17 @@ async function fetchAllCourses() {
             existingCourse.paths.push(currentPath);
           }
         } else {
+          // 解析時間和教室（從 "M56-EC015[GF]" 分離成 time 和 room）
+          const { time, room } = parseTimeRoom(course.cos_time);
+
           // 創建新課程
           coursesMap.set(courseKey, {
             code: course.cos_code || '',
             name: course.cos_cname || course.cos_ename || '',
             teacher: course.teacher || '',
-            time: course.cos_time || '', // 直接使用 API 回傳的時間字串（格式：M56-EC015[GF]）
+            time: time, // 只保留時間代碼（M56）
             credits: course.cos_credit || '',
-            room: course.cos_room || '',
+            room: room || course.cos_room || '', // 教室+校區（EC015[GF]）
             cos_id: course.cos_id || course.cos_code || '', // 課程編號（用於課程綱要連結）
             acy: acy, // 學年度
             sem: sem, // 學期
@@ -513,6 +516,27 @@ function splitAcysem(acysem) {
   const acy = str.substring(0, str.length - 1);
   const sem = str.substring(str.length - 1);
   return [acy, sem];
+}
+
+// 解析時間與教室字串（例如 "M56-EC015[GF]" -> {time: "M56", room: "EC015[GF]"}）
+function parseTimeRoom(timeString) {
+  if (!timeString || typeof timeString !== 'string') {
+    return { time: '', room: '' };
+  }
+
+  // 使用 '-' 分割時間和教室
+  // 格式：M56-EC015[GF] 或 T34F56-SA321[GF]
+  const dashIndex = timeString.indexOf('-');
+
+  if (dashIndex === -1) {
+    // 沒有 '-'，全部當作時間代碼
+    return { time: timeString, room: '' };
+  }
+
+  const time = timeString.substring(0, dashIndex); // M56
+  const room = timeString.substring(dashIndex + 1); // EC015[GF]
+
+  return { time, room };
 }
 
 // 格式化時間
