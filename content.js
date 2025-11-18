@@ -498,9 +498,17 @@ async function getCourseList(acysem, deptUid) {
               allCourses.push(...courses);
               console.log(`      從 ${deptId} 的 key="${key}" 提取了 ${courses.length} 筆課程`);
 
-              // 輸出第一筆課程的所有欄位，用於檢查資料結構
-              if (courses.length > 0 && Math.random() < 0.01) { // 1% 機率輸出樣本
-                console.log('      課程資料範例:', courses[0]);
+              // 輸出前3筆課程的完整資料，用於檢查時間欄位
+              if (courses.length > 0) {
+                console.log('      ========== 課程資料結構檢查 ==========');
+                courses.slice(0, 3).forEach((course, idx) => {
+                  console.log(`      課程 ${idx + 1}:`, course);
+                  console.log(`        - cos_time:`, course.cos_time);
+                  console.log(`        - cos_crstime:`, course.cos_crstime);
+                  console.log(`        - crstime:`, course.crstime);
+                  console.log(`        - 所有 time 相關欄位:`, Object.keys(course).filter(k => k.toLowerCase().includes('time')));
+                });
+                console.log('      ========================================');
               }
             }
           }
