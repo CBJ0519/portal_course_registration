@@ -254,8 +254,12 @@ document.addEventListener('DOMContentLoaded', function() {
           const converted = convertDayCode(keyword);
           const patterns = Array.isArray(converted) ? converted : [converted];
 
-          // 檢查是否匹配任何一個模式
-          const matched = patterns.some(pattern => time.includes(pattern)) || time.includes(keyword);
+          // 檢查中文格式（週一 56）或原始時間代碼格式（M56）
+          // 原始格式：API 回傳的是 M56-EC015[GF] 這種格式，需要大小寫不敏感的匹配
+          const timeUpper = time.toUpperCase();
+          const keywordUpper = keyword.toUpperCase();
+          const matched = patterns.some(pattern => time.includes(pattern)) ||
+                         timeUpper.includes(keywordUpper);
 
           // Debug：輸出時間搜尋資訊（前20筆）
           if (keyword.length > 1 && dayCodeMap[keyword[0].toUpperCase()]) {
@@ -264,7 +268,8 @@ document.addEventListener('DOMContentLoaded', function() {
               console.log(`時間搜尋 "${keyword}" - ${matched ? '✓匹配' : '✗未匹配'}:`, {
                 課程: course.name,
                 時間欄位: course.time,
-                匹配模式: patterns
+                匹配模式: patterns,
+                原始格式匹配: timeUpper.includes(keywordUpper)
               });
               window.debugCount++;
             }

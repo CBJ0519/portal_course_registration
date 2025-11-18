@@ -140,7 +140,7 @@ async function fetchAllCourses() {
             code: course.cos_code || '',
             name: course.cos_cname || course.cos_ename || '',
             teacher: course.teacher || '',
-            time: formatTime(course.cos_time) || '',
+            time: course.cos_time || '', // 直接使用 API 回傳的時間字串（格式：M56-EC015[GF]）
             credits: course.cos_credit || '',
             room: course.cos_room || '',
             cos_id: course.cos_id || course.cos_code || '', // 課程編號（用於課程綱要連結）
