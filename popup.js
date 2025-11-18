@@ -1,11 +1,15 @@
 // 等待 DOM 載入完成
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('✓ NYCU 課程搜尋助手已載入');
+
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
   const refreshBtn = document.getElementById('refreshData');
   const resultsDiv = document.getElementById('results');
   const loadingDiv = document.getElementById('loading');
   const dataStatusDiv = document.getElementById('dataStatus');
+
+  console.log('✓ DOM 元素已載入');
 
   // 分頁相關元素
   const searchTab = document.getElementById('searchTab');
@@ -87,7 +91,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 執行搜尋
   function performSearch() {
+    console.log('🔍 performSearch() 被呼叫');
+
     const query = searchInput.value.trim();
+    console.log('搜尋查詢:', query);
 
     if (!query) {
       resultsDiv.innerHTML = '<div class="placeholder">請輸入課程名稱或代碼</div>';
@@ -98,8 +105,11 @@ document.addEventListener('DOMContentLoaded', function() {
     loadingDiv.style.display = 'block';
     resultsDiv.innerHTML = '';
 
+    console.log('開始從 Chrome Storage 讀取課程資料...');
+
     // 從 Chrome Storage 讀取課程資料
     chrome.storage.local.get(['courseData'], function(result) {
+      console.log('Chrome Storage 讀取完成:', result.courseData ? `${result.courseData.length} 筆課程` : '無資料');
       if (!result.courseData || result.courseData.length === 0) {
         loadingDiv.style.display = 'none';
         resultsDiv.innerHTML = `
@@ -116,8 +126,10 @@ document.addEventListener('DOMContentLoaded', function() {
       // 使用 setTimeout 讓載入動畫有時間顯示
       // 對於大量資料，這樣可以確保 UI 不會凍結
       setTimeout(() => {
+        console.log('開始執行 searchCourses()...');
         // 搜尋課程
         const results = searchCourses(result.courseData, query);
+        console.log('searchCourses() 完成，找到', results.length, '筆結果');
         currentResults = results; // 保存搜尋結果
 
         // 隱藏載入動畫並顯示結果
