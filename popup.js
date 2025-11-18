@@ -201,6 +201,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 搜尋課程函數
   function searchCourses(courses, query) {
+    // 重置 debug 計數器
+    window.debugCount = 0;
+
     // 將查詢字串以空格分割成多個關鍵字
     const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 0);
 
@@ -226,12 +229,17 @@ document.addEventListener('DOMContentLoaded', function() {
           // 檢查是否匹配任何一個模式
           const matched = patterns.some(pattern => time.includes(pattern)) || time.includes(keyword);
 
-          // Debug：如果是組合代碼且沒匹配，輸出時間內容
-          if (!matched && keyword.length > 1 && dayCodeMap[keyword[0].toUpperCase()]) {
-            console.log(`未匹配 ${keyword}:`, {
-              time: course.time,
-              patterns: patterns
-            });
+          // Debug：輸出時間搜尋資訊（前20筆）
+          if (keyword.length > 1 && dayCodeMap[keyword[0].toUpperCase()]) {
+            if (!window.debugCount) window.debugCount = 0;
+            if (window.debugCount < 20) {
+              console.log(`時間搜尋 "${keyword}" - ${matched ? '✓匹配' : '✗未匹配'}:`, {
+                課程: course.name,
+                時間欄位: course.time,
+                匹配模式: patterns
+              });
+              window.debugCount++;
+            }
           }
 
           return matched;
