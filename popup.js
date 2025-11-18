@@ -179,14 +179,19 @@ document.addEventListener('DOMContentLoaded', function() {
       const day = dayCodeMap[upperKeyword[0]];
       const timeCode = upperKeyword.substring(1);
       // 返回陣列，包含多種可能的匹配模式
-      // 例如 M3 -> ["週一 3"], M56 -> ["週一 5,6", "週一 5", "週一 6"]
-      const patterns = [`週${day} ${timeCode}`]; // 完整匹配：週一 56
+      const patterns = [
+        `週${day} ${timeCode}`,  // 週一 56
+        `週${day}${timeCode}`,   // 週一56 (無空格)
+      ];
+
       if (timeCode.length > 1) {
         // 如果時間代碼有多個字元，也嘗試分開匹配
         patterns.push(`週${day} ${timeCode.split('').join(',')}`); // 週一 5,6
+        patterns.push(`週${day}${timeCode.split('').join(',')}`);  // 週一5,6
         // 也加入個別時間的匹配
         timeCode.split('').forEach(t => {
           patterns.push(`週${day} ${t}`); // 週一 5 或 週一 6
+          patterns.push(`週${day}${t}`);  // 週一5 或 週一6
         });
       }
       return patterns;
@@ -215,11 +220,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // 如果是時間相關關鍵字，只在 time 欄位搜尋
         if (isTimeKeyword(keyword)) {
           // 轉換星期代碼（M -> 週一, M3 -> ["週一 3"], M56 -> ["週一 56", "週一 5,6", "週一 5", "週一 6"]）
-          const patterns = Array.isArray(convertDayCode(keyword))
-            ? convertDayCode(keyword)
-            : [convertDayCode(keyword)];
+          const converted = convertDayCode(keyword);
+          const patterns = Array.isArray(converted) ? converted : [converted];
+
           // 檢查是否匹配任何一個模式
-          return patterns.some(pattern => time.includes(pattern)) || time.includes(keyword);
+          const matched = patterns.some(pattern => time.includes(pattern)) || time.includes(keyword);
+
+          // Debug：如果是組合代碼且沒匹配，輸出時間內容
+          if (!matched && keyword.length > 1 && dayCodeMap[keyword[0].toUpperCase()]) {
+            console.log(`未匹配 ${keyword}:`, {
+              time: course.time,
+              patterns: patterns
+            });
+          }
+
+          return matched;
         }
 
         // 基本欄位搜尋：包含關鍵字或關鍵字是欄位的簡稱
