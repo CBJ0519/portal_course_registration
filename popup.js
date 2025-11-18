@@ -207,6 +207,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // 將查詢字串以空格分割成多個關鍵字
     const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 0);
 
+    // Debug: 輸出搜尋資訊
+    console.log('=== 開始搜尋 ===');
+    console.log('查詢字串:', query);
+    console.log('關鍵字:', keywords);
+    console.log('課程總數:', courses.length);
+
+    // 檢查每個關鍵字是否為時間關鍵字
+    keywords.forEach(kw => {
+      const isTime = isTimeKeyword(kw);
+      console.log(`關鍵字 "${kw}" 是時間關鍵字?`, isTime);
+      if (isTime) {
+        const converted = convertDayCode(kw);
+        console.log(`  轉換為:`, converted);
+      }
+    });
+
     if (keywords.length === 0) {
       return [];
     }
