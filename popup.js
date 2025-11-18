@@ -1,15 +1,11 @@
 // 等待 DOM 載入完成
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('✓ NYCU 課程搜尋助手已載入');
-
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
   const refreshBtn = document.getElementById('refreshData');
   const resultsDiv = document.getElementById('results');
   const loadingDiv = document.getElementById('loading');
   const dataStatusDiv = document.getElementById('dataStatus');
-
-  console.log('✓ DOM 元素已載入');
 
   // 分頁相關元素
   const searchTab = document.getElementById('searchTab');
@@ -91,10 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 執行搜尋
   function performSearch() {
-    console.log('🔍 performSearch() 被呼叫');
-
     const query = searchInput.value.trim();
-    console.log('搜尋查詢:', query);
 
     if (!query) {
       resultsDiv.innerHTML = '<div class="placeholder">請輸入課程名稱或代碼</div>';
@@ -105,11 +98,8 @@ document.addEventListener('DOMContentLoaded', function() {
     loadingDiv.style.display = 'block';
     resultsDiv.innerHTML = '';
 
-    console.log('開始從 Chrome Storage 讀取課程資料...');
-
     // 從 Chrome Storage 讀取課程資料
     chrome.storage.local.get(['courseData'], function(result) {
-      console.log('Chrome Storage 讀取完成:', result.courseData ? `${result.courseData.length} 筆課程` : '無資料');
       if (!result.courseData || result.courseData.length === 0) {
         loadingDiv.style.display = 'none';
         resultsDiv.innerHTML = `
@@ -126,10 +116,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // 使用 setTimeout 讓載入動畫有時間顯示
       // 對於大量資料，這樣可以確保 UI 不會凍結
       setTimeout(() => {
-        console.log('開始執行 searchCourses()...');
         // 搜尋課程
         const results = searchCourses(result.courseData, query);
-        console.log('searchCourses() 完成，找到', results.length, '筆結果');
         currentResults = results; // 保存搜尋結果
 
         // 隱藏載入動畫並顯示結果
@@ -213,27 +201,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 搜尋課程函數
   function searchCourses(courses, query) {
-    // 重置 debug 計數器
-    window.debugCount = 0;
-
     // 將查詢字串以空格分割成多個關鍵字
     const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 0);
-
-    // Debug: 輸出搜尋資訊
-    console.log('=== 開始搜尋 ===');
-    console.log('查詢字串:', query);
-    console.log('關鍵字:', keywords);
-    console.log('課程總數:', courses.length);
-
-    // 檢查每個關鍵字是否為時間關鍵字
-    keywords.forEach(kw => {
-      const isTime = isTimeKeyword(kw);
-      console.log(`關鍵字 "${kw}" 是時間關鍵字?`, isTime);
-      if (isTime) {
-        const converted = convertDayCode(kw);
-        console.log(`  轉換為:`, converted);
-      }
-    });
 
     if (keywords.length === 0) {
       return [];
@@ -258,24 +227,8 @@ document.addEventListener('DOMContentLoaded', function() {
           // 原始格式：API 回傳的是 M56-EC015[GF] 這種格式，需要大小寫不敏感的匹配
           const timeUpper = time.toUpperCase();
           const keywordUpper = keyword.toUpperCase();
-          const matched = patterns.some(pattern => time.includes(pattern)) ||
-                         timeUpper.includes(keywordUpper);
-
-          // Debug：輸出時間搜尋資訊（前20筆）
-          if (keyword.length > 1 && dayCodeMap[keyword[0].toUpperCase()]) {
-            if (!window.debugCount) window.debugCount = 0;
-            if (window.debugCount < 20) {
-              console.log(`時間搜尋 "${keyword}" - ${matched ? '✓匹配' : '✗未匹配'}:`, {
-                課程: course.name,
-                時間欄位: course.time,
-                匹配模式: patterns,
-                原始格式匹配: timeUpper.includes(keywordUpper)
-              });
-              window.debugCount++;
-            }
-          }
-
-          return matched;
+          return patterns.some(pattern => time.includes(pattern)) ||
+                 timeUpper.includes(keywordUpper);
         }
 
         // 基本欄位搜尋：包含關鍵字或關鍵字是欄位的簡稱
