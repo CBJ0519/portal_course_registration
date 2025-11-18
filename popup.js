@@ -142,10 +142,56 @@ document.addEventListener('DOMContentLoaded', function() {
     return abbrIndex === abbr.length;
   }
 
+  // 星期代碼對照表
+  const dayCodeMap = {
+    'M': '一',
+    'T': '二',
+    'W': '三',
+    'R': '四',
+    'F': '五',
+    'S': '六',
+    'U': '日'
+  };
+
   // 判斷關鍵字是否為時間相關
   function isTimeKeyword(keyword) {
     const timeKeywords = ['週一', '週二', '週三', '週四', '週五', '週六', '週日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    // 檢查是否為星期代碼（M, T, W, R, F, S, U）
+    if (keyword.length === 1 && dayCodeMap[keyword.toUpperCase()]) {
+      return true;
+    }
+    // 檢查是否包含星期代碼（如 M3, T56）
+    if (keyword.length >= 2 && dayCodeMap[keyword[0].toUpperCase()]) {
+      return true;
+    }
     return timeKeywords.includes(keyword);
+  }
+
+  // 將星期代碼轉換為搜尋字串
+  function convertDayCode(keyword) {
+    const upperKeyword = keyword.toUpperCase();
+    // 如果是單個星期代碼（M, T, W, R, F, S, U）
+    if (keyword.length === 1 && dayCodeMap[upperKeyword]) {
+      return '週' + dayCodeMap[upperKeyword];
+    }
+    // 如果是星期代碼+時間代碼（如 M3, T56, Mabc）
+    if (keyword.length >= 2 && dayCodeMap[upperKeyword[0]]) {
+      const day = dayCodeMap[upperKeyword[0]];
+      const timeCode = upperKeyword.substring(1);
+      // 返回陣列，包含多種可能的匹配模式
+      // 例如 M3 -> ["週一 3"], M56 -> ["週一 5,6", "週一 5", "週一 6"]
+      const patterns = [`週${day} ${timeCode}`]; // 完整匹配：週一 56
+      if (timeCode.length > 1) {
+        // 如果時間代碼有多個字元，也嘗試分開匹配
+        patterns.push(`週${day} ${timeCode.split('').join(',')}`); // 週一 5,6
+        // 也加入個別時間的匹配
+        timeCode.split('').forEach(t => {
+          patterns.push(`週${day} ${t}`); // 週一 5 或 週一 6
+        });
+      }
+      return patterns;
+    }
+    return [keyword];
   }
 
   // 搜尋課程函數
@@ -168,7 +214,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // 如果是時間相關關鍵字，只在 time 欄位搜尋
         if (isTimeKeyword(keyword)) {
-          return time.includes(keyword);
+          // 轉換星期代碼（M -> 週一, M3 -> ["週一 3"], M56 -> ["週一 56", "週一 5,6", "週一 5", "週一 6"]）
+          const patterns = Array.isArray(convertDayCode(keyword))
+            ? convertDayCode(keyword)
+            : [convertDayCode(keyword)];
+          // 檢查是否匹配任何一個模式
+          return patterns.some(pattern => time.includes(pattern)) || time.includes(keyword);
         }
 
         // 基本欄位搜尋：包含關鍵字或關鍵字是欄位的簡稱
