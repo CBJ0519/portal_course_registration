@@ -6967,8 +6967,8 @@ ${outlineContent}
     }
 
     // ⭐ 批次並行處理課程（提升速度）
-    const BATCH_SIZE = 5; // 每批同時處理 5 門課程
-    const BATCH_DELAY = 800; // 批次之間延遲 0.8 秒
+    const BATCH_SIZE = 20; // 每批同時處理 20 門課程
+    const BATCH_DELAY = 500; // 批次之間延遲 0.5 秒
 
     // 處理單門課程的函數
     async function processCourse(course) {
@@ -7110,8 +7110,8 @@ ${outlineContent}
     console.log(`   📊 總課程數：${allCourses.length} 門`);
     console.log(`   ✅ 已有關鍵字：${alreadyProcessed} 門 (${Math.floor(alreadyProcessed / allCourses.length * 100)}%)`);
     console.log(`   🔄 待提取：${totalCount} 門`);
-    // 預估：每批 10 門，約 2.5 秒（包含 API 請求 + 1 秒延遲）→ 每秒約 4 門
-    const estimatedSeconds = Math.ceil(totalCount / 4);
+    // 預估：每批 20 門，約 2.5 秒（包含 API 請求 + 0.5 秒延遲）→ 每秒約 8 門
+    const estimatedSeconds = Math.ceil(totalCount / 8);
     const estimatedMinutes = Math.floor(estimatedSeconds / 60);
     const remainingSeconds = estimatedSeconds % 60;
     if (estimatedMinutes > 0) {
@@ -7158,10 +7158,10 @@ ${outlineContent}
       };
     }
 
-    // 批次大小：每批處理 10 門課程（避免 API 限流）
-    const BATCH_SIZE = 10;
-    // 批次延遲：每批之間延遲 1 秒
-    const BATCH_DELAY = 1000;
+    // 批次大小：每批處理 20 門課程（避免 API 限流）
+    const BATCH_SIZE = 20;
+    // 批次延遲：每批之間延遲 0.5 秒
+    const BATCH_DELAY = 500;
 
     let processed = 0;
     let succeeded = 0;
