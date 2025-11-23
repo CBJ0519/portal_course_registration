@@ -1536,8 +1536,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="course-header-left">
               ${score !== null ? `<div style="height: 36px; padding: 0 10px; margin-right: 16px; margin-bottom: 8px; ${scoreBadgeStyle} color: white; border-radius: 12px; font-size: 10px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
                 <span style="font-weight: bold; font-size: 10px;">${scoreLabel}</span>
-                <span style="font-weight: bold; font-size: 11px;">🎯${score}/105</span>
-                <span style="opacity: 0.85; font-size: 9px;">基礎${scoreData.base}/30 時間${scoreData.time}/30 路徑${scoreData.path}/20 匹配${scoreData.match}/20 AI${scoreData.ai || 0}/5</span>
+                <span style="font-weight: bold; font-size: 11px;">🎯${score}/100</span>
+                <span style="opacity: 0.85; font-size: 9px;">AI${scoreData.ai}/30 時間${scoreData.time}/30 路徑${scoreData.path}/20 匹配${scoreData.match}/20</span>
               </div>` : ''}
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
@@ -1726,6 +1726,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
       dataStatusDiv.innerHTML = `<span class="${statusClass}">${statusText}</span>`;
       dataStatusDiv.style.display = 'block';
+
+      // 🆕 主動提取關鍵字：當課程資料存在且 AI 已啟用時，自動開始提取
+      if (result.courseData && result.courseData.length > 0 && aiEnabled) {
+        // 延遲 1 秒後開始主動提取（讓 UI 先渲染完成）
+        setTimeout(() => {
+          console.log('🚀 主動開始提取課程關鍵字...');
+          proactiveExtractKeywords(result.courseData);
+        }, 1000);
+      }
     });
   }
 
@@ -3149,18 +3158,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
           const details = extractCourseDetailsFromAPI(baseData, descData, course);
 
-          // 使用 AI 從課程概述提取搜尋關鍵字（僅在 AI 啟用時）
-          if (aiEnabled && details['課程概述'] && details['課程概述'] !== '未提供') {
+          // 使用 AI 從完整課程綱要提取搜尋關鍵字（僅在 AI 啟用時）
+          if (aiEnabled && details) {
             try {
-              console.log('🔍 正在提取課程搜尋關鍵字...');
-              const keywords = await extractKeywordsFromOutline(details['課程概述'], course.name);
+              console.log('🔍 正在從完整課程綱要提取搜尋關鍵字...');
+              const keywords = await extractKeywordsFromOutline(details, course.name);
               details.searchKeywords = keywords;
               console.log('✅ 關鍵字提取完成:', keywords.substring(0, 100) + (keywords.length > 100 ? '...' : ''));
             } catch (error) {
               console.warn('⚠️ 提取關鍵字失敗，使用完整概述作為後備:', error);
-              details.searchKeywords = details['課程概述'];
+              details.searchKeywords = details['課程概述'] || '';
             }
-          } else if (details['課程概述'] && details['課程概述'] !== '未提供') {
+          } else if (details && details['課程概述'] && details['課程概述'] !== '未提供') {
             // AI 未啟用時，直接使用完整概述
             details.searchKeywords = details['課程概述'];
           }
@@ -3226,11 +3235,11 @@ document.addEventListener('DOMContentLoaded', function() {
           btn.style.cursor = 'not-allowed';
 
           const details = courseDetailsCache[courseKey];
-          if (details && details['課程概述'] && details['課程概述'] !== '未提供') {
-            console.log(`🔄 重新提取關鍵字: ${course.name}`);
+          if (details) {
+            console.log(`🔄 重新從完整課程綱要提取關鍵字: ${course.name}`);
 
-            // 重新提取關鍵字
-            const keywords = await extractKeywordsFromOutline(details['課程概述'], course.name);
+            // 重新提取關鍵字（從完整綱要）
+            const keywords = await extractKeywordsFromOutline(details, course.name);
             details.searchKeywords = keywords;
 
             // 更新緩存
@@ -3669,14 +3678,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
           const details = extractCourseDetailsFromAPI(baseData, descData, updatedCourse);
 
-          // 使用 AI 從課程概述提取搜尋關鍵字
-          if (details['課程概述'] && details['課程概述'] !== '未提供') {
+          // 使用 AI 從完整課程綱要提取搜尋關鍵字
+          if (details) {
             try {
-              const keywords = await extractKeywordsFromOutline(details['課程概述'], updatedCourse.name);
+              const keywords = await extractKeywordsFromOutline(details, updatedCourse.name);
               details.searchKeywords = keywords;
             } catch (error) {
               console.warn('提取關鍵字失敗，使用完整概述作為後備:', error);
-              details.searchKeywords = details['課程概述'];
+              details.searchKeywords = details['課程概述'] || '';
             }
           }
 
@@ -3999,6 +4008,24 @@ document.addEventListener('DOMContentLoaded', function() {
         if (geminiSettings) {
           geminiSettings.style.display = 'block';
         }
+      }
+
+      // 🚀 AI 設定載入完成後，觸發主動提取關鍵字
+      if (aiEnabled) {
+        console.log('[loadAISettings] AI 已啟用，檢查是否需要主動提取關鍵字...');
+        chrome.storage.local.get(['courseData'], (dataResult) => {
+          if (dataResult.courseData && dataResult.courseData.length > 0) {
+            console.log('[loadAISettings] 課程資料存在，延遲 1 秒後開始主動提取');
+            setTimeout(() => {
+              console.log('🚀 主動開始提取課程關鍵字...');
+              proactiveExtractKeywords(dataResult.courseData);
+            }, 1000);
+          } else {
+            console.log('[loadAISettings] 課程資料不存在，跳過主動提取');
+          }
+        });
+      } else {
+        console.log('[loadAISettings] AI 未啟用，跳過主動提取');
       }
     });
   }
@@ -4734,6 +4761,11 @@ document.addEventListener('DOMContentLoaded', function() {
           [p.type, p.college, p.department, p.category].filter(x => x).join('/')
         ).join('; ');
 
+        // 獲取課程提取的關鍵字（包含先修科目、評量方式、教學方法等）
+        const courseKey = getCourseKey(c);
+        const courseDetails = courseDetailsCache[courseKey];
+        const keywords = courseDetails && courseDetails.searchKeywords ? courseDetails.searchKeywords : '';
+
         const parts = [
           `${i + 1}. ${c.name}`,
           c.teacher || '',
@@ -4744,7 +4776,8 @@ document.addEventListener('DOMContentLoaded', function() {
           c.cos_type || '',
           c.credits ? `${c.credits}學分` : '',
           c.code || '',
-          c.memo || ''
+          c.memo || '',
+          keywords ? `關鍵字:${keywords}` : ''
         ].filter(p => p).join('｜');
         return parts;
       }).join('\n');
@@ -4764,7 +4797,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const requiredAttrs = Object.entries(attributeSets).filter(([k, [req, kw]]) => req === 'required' && kw.length > 0);
       const optionalAttrs = Object.entries(attributeSets).filter(([k, [req, kw]]) => req === 'optional' && kw.length > 0);
 
-      const prompt = `為課程評分（0-105分）
+      const prompt = `為課程評分（0-100分）
 
 【用戶查詢】：${userQuery}
 
@@ -4777,11 +4810,27 @@ ${optionalAttrs.length > 0 ? optionalAttrs.map(([k, [req, kw]]) => `${k}: ${form
 課程列表：
 ${courseList}
 
+**課程列表說明**：
+- 每門課程的資訊用「｜」分隔
+- 「關鍵字」欄位：包含從完整課程綱要（先修科目、課程概述、教科書、評量方式、教學方法、備註）中提取的重要關鍵字
+- 如果課程有「關鍵字」欄位，請優先使用該欄位來理解課程的詳細內容（如評分方式、先修要求、教學形式等）
+
 評分標準：
-總分 = 基礎分(30) + 時間匹配分(0-30) + 路徑/系所匹配分(0-20) + 匹配度加分(0-20) + AI動態評估分(0-5)
-**最高分 105 分**
+總分 = AI分(0-30) + 時間匹配分(0-30) + 路徑/系所匹配分(0-20) + 匹配度加分(0-20)
+**最高分 100 分**
 
 **重要原則：如果用戶沒有指定某個屬性（該屬性不在 Required 和 Optional 中），則該屬性給滿分**
+
+AI分（0-30分）：
+根據課程與查詢的整體匹配度、課程品質、實用性、推薦程度等因素綜合評估。
+**特別注意**：如果課程有「關鍵字」欄位，請深入分析其中的評量方式、先修科目、教學方法等資訊：
+- 30分：完美匹配，課程品質極高，強烈推薦
+- 25-29分：高度匹配，課程品質優秀，非常推薦
+- 20-24分：良好匹配，課程品質良好，推薦
+- 15-19分：中等匹配，課程品質中等
+- 10-14分：一般匹配，課程品質一般
+- 5-9分：勉強匹配，課程品質較低
+- 0-4分：不太匹配，不推薦
 
 時間匹配分（0-30分）：
 - **如果用戶沒有指定時間條件**（time 不在上述條件中）：給滿分 30 分
@@ -4804,66 +4853,68 @@ ${courseList}
 - 部分相關：+5~9 分
 - 勉強相關：+0~4 分
 
-AI動態評估分（0-5分）：
-根據課程與查詢的整體匹配度、課程熱門度、實用性等因素綜合評估：
-- 5分：完美匹配，非常推薦
-- 4分：高度匹配，推薦
-- 3分：良好匹配
-- 2分：一般匹配
-- 1分：勉強匹配
-- 0分：不太匹配
-
-範例：
+範例 1：
 查詢「星期二上午的課程」（只指定 time，沒有指定 paths 和 name）
+- AI分：根據課程品質與推薦程度 0-30 分
 - 時間匹配分：根據實際時間匹配程度 0-30 分
 - 路徑/系所匹配分：滿分 20 分（因為用戶沒有指定）
 - 匹配度加分：滿分 20 分（因為用戶沒有指定課程名稱）
-- AI動態評估分：根據綜合評估 0-5 分
-- 可能得分：30+30+20+20+5 = 105 分
+- 可能得分：30+30+20+20 = 100 分
+
+範例 2：
+查詢「推薦不用考試的通識課」
+- 課程A：關鍵字包含「期中考,期末考,筆試」→ AI分較低（5-10分）
+- 課程B：關鍵字包含「報告,實作,專題,無考試」→ AI分較高（25-30分）
+- 通過「關鍵字」欄位中的評量方式資訊來判斷是否符合「不用考試」的需求
+
+範例 3：
+查詢「找不需要微積分基礎的課程」
+- 課程A：關鍵字包含「微積分,線性代數,先修」→ AI分較低（0-5分）
+- 課程B：關鍵字包含「無先修要求」或沒有提及微積分 → AI分較高（25-30分）
+- 通過「關鍵字」欄位中的先修科目資訊來判斷
 
 輸出格式：
-- 格式：編號:總分:時間分:路徑分:匹配度分:AI評估分
+- 格式：編號:總分:AI分:時間分:路徑分:匹配度分
 - 每行一個課程，各項分數用冒號分隔
 - 結果必須按總分從高到低排序
 - 範例：
-  2:105:30:20:20:5
-  3:98:28:20:17:3
-  1:95:30:15:15:5
+  2:100:30:30:20:20
+  3:95:25:28:20:17
+  1:92:28:30:15:15
 - 不要輸出任何解釋、分析或額外文字
-- 確保所有分數都在合理範圍內（時間0-30，路徑0-20，匹配度0-20，AI評估0-5）`;
+- 確保所有分數都在合理範圍內（AI分0-30，時間0-30，路徑0-20，匹配度0-20）`;
 
       const response = await callAIForKeywordGeneration(prompt, 0.1, 0);  // thinking=0（評分不需要思考，快速計算）
 
-      // 解析編號和分數（格式：編號:總分:時間分:路徑分:匹配度分:AI評估分）
+      // 解析編號和分數（格式：編號:總分:AI分:時間分:路徑分:匹配度分）
       const matches = response.matchAll(/(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)/g);
       const results = new Map();
       for (const match of matches) {
         const courseNum = parseInt(match[1]);
         const aiTotalScore = parseInt(match[2]); // AI 返回的總分（可能有誤）
-        let timeScore = parseInt(match[3]);
-        let pathScore = parseInt(match[4]);
-        let matchScore = parseInt(match[5]);
-        let aiScore = parseInt(match[6]);
+        let aiScore = parseInt(match[3]);        // AI 綜合評估分
+        let timeScore = parseInt(match[4]);
+        let pathScore = parseInt(match[5]);
+        let matchScore = parseInt(match[6]);
 
         // 範圍檢查和修正（防止 AI 給出超範圍的分數）
+        aiScore = Math.min(30, Math.max(0, aiScore));         // 限制在 0-30
         timeScore = Math.min(30, Math.max(0, timeScore));     // 限制在 0-30
         pathScore = Math.min(20, Math.max(0, pathScore));     // 限制在 0-20
         matchScore = Math.min(20, Math.max(0, matchScore));   // 限制在 0-20
-        aiScore = Math.min(5, Math.max(0, aiScore));          // 限制在 0-5
 
-        // 重新計算總分以確保正確：總分 = 基礎分(30) + 時間分 + 路徑分 + 匹配度分 + AI評估分
-        const calculatedTotal = 30 + timeScore + pathScore + matchScore + aiScore;
+        // 重新計算總分以確保正確：總分 = AI分 + 時間分 + 路徑分 + 匹配度分
+        const calculatedTotal = aiScore + timeScore + pathScore + matchScore;
 
         if (courseNum >= 1 && courseNum <= chunk.length) {
           const course = chunk[courseNum - 1];
           const id = course.cos_id || course.code;
           results.set(id, {
             total: calculatedTotal,  // 使用重新計算的總分
+            ai: aiScore,      // AI 綜合評估分（0-30分）
             time: timeScore,
             path: pathScore,
-            match: matchScore,
-            ai: aiScore,  // AI 動態評估分
-            base: 30  // 基礎分固定30分
+            match: matchScore
           });
         }
       }
@@ -4908,6 +4959,23 @@ AI動態評估分（0-5分）：
       // 記錄開始搜尋
       addLog('info', `開始 AI 搜尋：${userQuery}`);
       addLog('info', `課程總數：${allCourses.length} 門`);
+
+      // ⏸️ 暫停主動提取（避免影響搜尋性能）
+      if (proactiveExtractionInProgress) {
+        proactiveExtractionPaused = true;
+        console.log('⏸️ 已暫停主動提取關鍵字（AI 搜尋中）');
+
+        // 更新暫停按鈕狀態
+        const stopLearningBtn = document.getElementById('stopLearningBtn');
+        const learningProgressText = document.getElementById('learningProgressText');
+        if (stopLearningBtn) {
+          stopLearningBtn.textContent = '▶';
+          stopLearningBtn.title = '繼續提取';
+        }
+        if (learningProgressText) {
+          learningProgressText.textContent = '⏸️ 已暫停（AI 搜尋中）...';
+        }
+      }
 
       // 重置中斷標誌和警告訊息
       aiSearchCancelled = false;
@@ -5958,6 +6026,23 @@ ${courseList}
       const courseIds = finalCourses.map(course => course.cos_id || course.code);
       console.log(`🎯 返回 ${courseIds.length} 個課程ID`);
 
+      // ▶️ 恢復主動提取
+      if (proactiveExtractionPaused) {
+        proactiveExtractionPaused = false;
+        console.log('▶️ 已恢復主動提取關鍵字');
+
+        // 更新暫停按鈕狀態
+        const stopLearningBtn = document.getElementById('stopLearningBtn');
+        const learningProgressText = document.getElementById('learningProgressText');
+        if (stopLearningBtn) {
+          stopLearningBtn.textContent = '⏸';
+          stopLearningBtn.title = '暫停提取';
+        }
+        if (learningProgressText) {
+          learningProgressText.textContent = '🚀 主動提取關鍵字...';
+        }
+      }
+
       return { courseIds, scoreMap };
     } catch (error) {
       console.error('AI 搜尋失敗:', error);
@@ -5967,6 +6052,24 @@ ${courseList}
       const totalSeconds = stopAITimer();
       console.log(`⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
       addLog('info', `⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
+
+      // ▶️ 恢復主動提取（即使搜尋失敗）
+      if (proactiveExtractionPaused) {
+        proactiveExtractionPaused = false;
+        console.log('▶️ 已恢復主動提取關鍵字');
+
+        // 更新暫停按鈕狀態
+        const stopLearningBtn = document.getElementById('stopLearningBtn');
+        const learningProgressText = document.getElementById('learningProgressText');
+        if (stopLearningBtn) {
+          stopLearningBtn.textContent = '⏸';
+          stopLearningBtn.title = '暫停提取';
+        }
+        if (learningProgressText) {
+          learningProgressText.textContent = '🚀 主動提取關鍵字...';
+        }
+      }
+
       return null;
     }
   }
@@ -6628,74 +6731,115 @@ ${step1CourseListText}
     }
   }
 
-  // ==================== 從課程概述提取搜尋關鍵字 ====================
-  // 使用 AI 從課程概述中提取關鍵字，用於搜尋功能（支援中英文雙語）
-  async function extractKeywordsFromOutline(outline, courseName) {
-    // 如果 AI 未啟用或綱要為空，直接返回完整概述
-    if (!aiEnabled || !outline || outline === '未提供') {
-      return outline || '';
+  // ==================== 從完整課程綱要提取搜尋關鍵字 ====================
+  // 使用 AI 從完整課程綱要中提取關鍵字，用於搜尋功能（支援中英文雙語）
+  async function extractKeywordsFromOutline(details, courseName) {
+    // 如果 AI 未啟用或沒有課程資訊，返回空字串
+    if (!aiEnabled || !details) {
+      return details?.課程概述 || '';
+    }
+
+    // 組合完整課程綱要內容
+    const outlineContent = [
+      details.先修科目 && details.先修科目 !== '未提供' ? `先修科目：${details.先修科目}` : '',
+      details.課程概述 && details.課程概述 !== '未提供' ? `課程概述：${details.課程概述}` : '',
+      details.教科書 && details.教科書 !== '未提供' ? `教科書：${details.教科書}` : '',
+      details.評量方式 && details.評量方式 !== '未提供' ? `評量方式：${details.評量方式}` : '',
+      details.教學方法 && details.教學方法 !== '未提供' ? `教學方法：${details.教學方法}` : '',
+      details.備註 && details.備註 !== '未提供' ? `備註：${details.備註}` : ''
+    ].filter(Boolean).join('\n\n');
+
+    // 如果沒有任何有效內容，返回空字串
+    if (!outlineContent.trim()) {
+      return '';
     }
 
     // 偵測綱要語言（簡單判斷：英文字符比例）
-    const englishChars = outline.match(/[a-zA-Z]/g) || [];
-    const chineseChars = outline.match(/[\u4e00-\u9fa5]/g) || [];
+    const englishChars = outlineContent.match(/[a-zA-Z]/g) || [];
+    const chineseChars = outlineContent.match(/[\u4e00-\u9fa5]/g) || [];
     const isEnglish = englishChars.length > chineseChars.length;
 
     let prompt;
 
     if (isEnglish) {
       // 英文綱要：提取英文關鍵字 + 中文翻譯
-      prompt = `從以下英文課程概述中提取搜尋關鍵字，並提供中英文雙語關鍵字。
+      prompt = `從以下完整課程綱要中提取搜尋關鍵字，並提供中英文雙語關鍵字。
 
 課程名稱：${courseName}
 
-課程概述（英文）：
-${outline}
+完整課程綱要：
+${outlineContent}
 
 任務：
-1. 提取最重要的技術術語、概念、主題（英文）
-2. 保留專有名詞（如演算法名稱、工具名稱、理論名稱）
-3. 為每個英文關鍵字提供對應的中文翻譯
-4. 移除冗長描述和連接詞
-5. 輸出格式：英文關鍵字,中文翻譯,... （中英文混合，用逗號分隔）
-6. 只輸出關鍵字，不要解釋
+1. 分析【先修科目】：提取必備的前置知識、技能（如微積分、線性代數、程式設計等）
+2. 分析【課程概述】：提取核心技術術語、概念、主題
+3. 分析【教科書】：提取重要參考書籍、工具、框架名稱
+4. 分析【評量方式】：提取評分相關關鍵詞（如報告、考試、實作、分組專題等）
+5. 分析【教學方法】：提取教學形式關鍵詞（如翻轉教學、實驗課、線上課程等）
+6. 保留所有專有名詞（演算法名稱、工具名稱、理論名稱、書名等）
+7. 為每個英文關鍵字提供對應的中文翻譯
+8. 移除冗長描述和連接詞
+9. 輸出格式：英文關鍵字,中文翻譯,... （中英文混合，用逗號分隔）
+10. 只輸出關鍵字，不要解釋
 
 範例：
-輸入：This course introduces the fundamental concepts of data structures, including arrays, linked lists, stacks, queues, trees, graphs, and covers sorting and searching algorithms.
-輸出：data structures,資料結構,arrays,陣列,linked lists,鏈結串列,stacks,堆疊,queues,佇列,trees,樹,graphs,圖,sorting algorithms,排序演算法,searching algorithms,搜尋演算法
+輸入：
+先修科目：Calculus, Linear Algebra
+課程概述：This course introduces data structures including arrays, linked lists, stacks, queues, trees, graphs, and covers sorting algorithms.
+評量方式：Midterm exam 30%, Final exam 30%, Programming assignments 40%
+教學方法：Lecture and lab sessions
 
-現在請為上述課程概述提取中英文關鍵字：`;
+輸出：Calculus,微積分,Linear Algebra,線性代數,data structures,資料結構,arrays,陣列,linked lists,鏈結串列,stacks,堆疊,queues,佇列,trees,樹,graphs,圖,sorting algorithms,排序演算法,exam,考試,programming assignments,程式作業,實作,lecture,講課,lab,實驗
+
+現在請為上述完整課程綱要提取中英文關鍵字：`;
     } else {
       // 中文綱要：提取中文關鍵字（可能包含英文專有名詞）
-      prompt = `從以下課程概述中提取搜尋關鍵字。
+      prompt = `從以下完整課程綱要中提取搜尋關鍵字。
 
 課程名稱：${courseName}
 
-課程概述：
-${outline}
+完整課程綱要：
+${outlineContent}
 
 任務：
-1. 提取最重要的技術術語、概念、主題
-2. 保留專有名詞（如演算法名稱、工具名稱、理論名稱）
-3. 保留英文專有名詞（如 Machine Learning、Python、API 等）
-4. 移除冗長描述和連接詞
-5. 每個關鍵字用逗號分隔
-6. 只輸出關鍵字，不要解釋
+1. 分析【先修科目】：提取必備的前置知識、技能（如微積分、線性代數、程式設計等）
+2. 分析【課程概述】：提取核心技術術語、概念、主題
+3. 分析【教科書】：提取重要參考書籍、工具、框架名稱
+4. 分析【評量方式】：提取評分相關關鍵詞（如報告、考試、實作、分組專題等）
+5. 分析【教學方法】：提取教學形式關鍵詞（如翻轉教學、實驗課、線上課程等）
+6. 保留所有專有名詞（演算法名稱、工具名稱、理論名稱、書名、英文專有名詞如 Python、API 等）
+7. 移除冗長描述和連接詞
+8. 每個關鍵字用逗號分隔
+9. 只輸出關鍵字，不要解釋
 
 範例：
-輸入：本課程介紹資料結構的基本概念，包括陣列、鏈結串列、堆疊、佇列、樹狀結構、圖形等，並學習排序和搜尋演算法。同時會使用 Python 實作。
-輸出：資料結構,陣列,鏈結串列,堆疊,佇列,樹狀結構,圖形,排序演算法,搜尋演算法,Python,實作
+輸入：
+先修科目：微積分、線性代數
+課程概述：本課程介紹資料結構的基本概念，包括陣列、鏈結串列、堆疊、佇列、樹狀結構、圖形等，並學習排序演算法。使用 Python 實作。
+評量方式：期中考 30%、期末考 30%、程式作業 40%
+教學方法：課堂講授與實驗課
 
-現在請為上述課程概述提取關鍵字：`;
+輸出：微積分,線性代數,資料結構,陣列,鏈結串列,堆疊,佇列,樹狀結構,圖形,排序演算法,Python,實作,期中考,期末考,程式作業,考試,講授,實驗課
+
+現在請為上述完整課程綱要提取關鍵字：`;
     }
 
     try {
-      const response = await callAIForKeywordGeneration(prompt, 0.3, 0);
+      // 設定 20 秒超時（AI API 可能需要較長時間）
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI API 請求超時')), 20000)
+      );
+
+      const response = await Promise.race([
+        callAIForKeywordGeneration(prompt, 0.3, 0),
+        timeoutPromise
+      ]);
+
       // 清理結果（移除多餘空白和換行）
       return response.replace(/\n/g, ' ').trim();
     } catch (error) {
       console.warn('AI 提取關鍵字失敗，返回原始概述:', error);
-      return outline; // 失敗時返回完整概述作為後備
+      return details.課程概述 || ''; // 失敗時返回課程概述作為後備
     }
   }
 
@@ -6736,13 +6880,11 @@ ${outline}
     const learningProgress = document.getElementById('learningProgress');
     const learningProgressText = document.getElementById('learningProgressText');
     const learningCounter = document.getElementById('learningCounter');
-    const learningProgressFill = document.getElementById('learningProgressFill');
     const stopLearningBtn = document.getElementById('stopLearningBtn');
 
-    learningProgress.style.display = 'flex';
+    learningProgress.style.display = 'block';
     learningProgressText.textContent = '正在提取關鍵字...';
     learningCounter.textContent = `(0/${coursesToProcess.length})`;
-    learningProgressFill.style.width = '0%';
 
     // 停止按鈕事件
     stopLearningBtn.onclick = () => {
@@ -6764,18 +6906,26 @@ ${outline}
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
+          // 設定 15 秒超時
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+
           const [baseResponse, descResponse] = await Promise.all([
             fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: params.toString()
+              body: params.toString(),
+              signal: controller.signal
             }),
             fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: params.toString()
+              body: params.toString(),
+              signal: controller.signal
             })
           ]);
+
+          clearTimeout(timeoutId);
 
           // 檢查回應狀態
           if (!baseResponse.ok || !descResponse.ok) {
@@ -6801,7 +6951,12 @@ ${outline}
             throw parseError;
           }
         } catch (error) {
+          // 檢查是否為取消錯誤
+          if (error.name === 'AbortError') {
+            console.warn(`⏱️ 請求超時 (${course.cos_id})`);
+          }
           if (attempt < maxRetries) {
+            console.log(`🔄 重試 ${attempt + 1}/${maxRetries}: ${course.cos_id}`);
             // 重試前等待，使用指數退避
             await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
             continue;
@@ -6822,15 +6977,18 @@ ${outline}
         const { baseData, descData } = await fetchCourseWithRetry(course);
         const details = extractCourseDetailsFromAPI(baseData, descData, course);
 
-        // 提取關鍵字
-        if (details['課程概述'] && details['課程概述'] !== '未提供' && details['課程概述'].length > 10) {
-          const keywords = await extractKeywordsFromOutline(details['課程概述'], course.name);
+        // 從完整課程綱要提取關鍵字
+        if (details) {
+          const keywords = await extractKeywordsFromOutline(details, course.name);
           details.searchKeywords = keywords;
-          console.log(`✅ [${course.name}] 關鍵字提取成功: ${keywords.substring(0, 150)}${keywords.length > 150 ? '...' : ''}`);
+          if (keywords && keywords.length > 0) {
+            console.log(`✅ [${course.name}] 關鍵字提取成功: ${keywords.substring(0, 150)}${keywords.length > 150 ? '...' : ''}`);
+          } else {
+            console.log(`⚠️ [${course.name}] 無有效課程綱要內容，關鍵字為空`);
+          }
         } else {
-          // 沒有足夠的課程概述，跳過
-          details.searchKeywords = '';
-          console.log(`⚠️ [${course.name}] 無課程概述，跳過關鍵字提取`);
+          // 沒有課程詳細資訊，跳過
+          console.log(`⚠️ [${course.name}] 無課程詳細資訊，跳過關鍵字提取`);
         }
 
         // 儲存到緩存
@@ -6886,8 +7044,7 @@ ${outline}
 
       // 更新進度
       const progress = Math.floor((processed / coursesToProcess.length) * 100);
-      learningProgressFill.style.width = `${progress}%`;
-      learningCounter.textContent = `(${processed}/${coursesToProcess.length})`;
+      learningCounter.textContent = `${progress}% (${processed}/${coursesToProcess.length})`;
       learningProgressText.textContent = `正在提取關鍵字... ${succeeded} 成功${failed > 0 ? `, ${failed} 失敗` : ''}`;
 
       // 批次之間延遲（避免觸發伺服器限流）
@@ -6910,6 +7067,296 @@ ${outline}
     }, 2000);
 
     console.log(`🎉 自動提取完成：${succeeded} 成功，${failed} 失敗，共處理 ${processed}/${coursesToProcess.length}`);
+  }
+
+  // ==================== 主動提取關鍵字（後台執行）====================
+  // 應用啟動時主動為所有課程提取關鍵字，提升 AI 搜尋品質
+  let proactiveExtractionInProgress = false;
+  let proactiveExtractionPaused = false;
+
+  async function proactiveExtractKeywords(allCourses) {
+    if (!aiEnabled || !allCourses || allCourses.length === 0) {
+      console.log('⚠️ AI 未啟用或無課程資料，跳過主動提取');
+      return;
+    }
+
+    if (proactiveExtractionInProgress) {
+      console.log('⚠️ 主動提取已在執行中，跳過重複啟動');
+      return;
+    }
+
+    // 過濾出尚未提取過關鍵字的課程
+    const coursesToProcess = allCourses.filter(course => {
+      const courseKey = getCourseKey(course);
+      const cached = courseDetailsCache[courseKey];
+      // 如果沒有緩存，或者沒有 searchKeywords 屬性，則需要處理
+      return !cached || !cached.searchKeywords;
+    });
+
+    if (coursesToProcess.length === 0) {
+      console.log('✅ 所有課程都已提取過關鍵字，無需主動提取');
+      return;
+    }
+
+    const totalCount = coursesToProcess.length;
+    const alreadyProcessed = allCourses.length - totalCount;
+
+    console.log(`🚀 主動提取模式啟動：`);
+    console.log(`   📊 總課程數：${allCourses.length} 門`);
+    console.log(`   ✅ 已有關鍵字：${alreadyProcessed} 門 (${Math.floor(alreadyProcessed / allCourses.length * 100)}%)`);
+    console.log(`   🔄 待提取：${totalCount} 門`);
+    // 預估：每批 10 門，約 2.5 秒（包含 API 請求 + 1 秒延遲）→ 每秒約 4 門
+    const estimatedSeconds = Math.ceil(totalCount / 4);
+    const estimatedMinutes = Math.floor(estimatedSeconds / 60);
+    const remainingSeconds = estimatedSeconds % 60;
+    if (estimatedMinutes > 0) {
+      console.log(`   ⏱️ 預估時間：約 ${estimatedMinutes} 分 ${remainingSeconds} 秒`);
+    } else {
+      console.log(`   ⏱️ 預估時間：約 ${estimatedSeconds} 秒`);
+    }
+
+    proactiveExtractionInProgress = true;
+    proactiveExtractionPaused = false;
+
+    // 🎨 顯示 UI 進度條
+    const learningProgress = document.getElementById('learningProgress');
+    const learningProgressText = document.getElementById('learningProgressText');
+    const learningCounter = document.getElementById('learningCounter');
+    const stopLearningBtn = document.getElementById('stopLearningBtn');
+
+    if (learningProgress) {
+      learningProgress.style.display = 'block';
+      learningProgressText.textContent = '🚀 主動提取關鍵字...';
+      learningCounter.textContent = `0% (0/${totalCount})`;
+
+      // 暫停/繼續按鈕初始化
+      stopLearningBtn.textContent = '⏸';
+      stopLearningBtn.title = '暫停提取';
+
+      // 暫停/繼續按鈕事件
+      stopLearningBtn.onclick = () => {
+        if (proactiveExtractionPaused) {
+          // 目前是暫停狀態 → 繼續執行
+          proactiveExtractionPaused = false;
+          stopLearningBtn.textContent = '⏸';
+          stopLearningBtn.title = '暫停提取';
+          learningProgressText.textContent = '🚀 主動提取關鍵字...';
+          console.log('▶️ 用戶恢復了主動提取');
+        } else {
+          // 目前是執行狀態 → 暫停
+          proactiveExtractionPaused = true;
+          stopLearningBtn.textContent = '▶';
+          stopLearningBtn.title = '繼續提取';
+          learningProgressText.textContent = '⏸️ 已暫停...';
+          console.log('⏸️ 用戶暫停了主動提取');
+        }
+      };
+    }
+
+    // 批次大小：每批處理 10 門課程（避免 API 限流）
+    const BATCH_SIZE = 10;
+    // 批次延遲：每批之間延遲 1 秒
+    const BATCH_DELAY = 1000;
+
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
+
+    // 輔助函數：帶重試的課程資訊獲取
+    async function fetchCourseWithRetry(course, maxRetries = 2) {
+      const params = new URLSearchParams({
+        acy: course.acy,
+        sem: course.sem,
+        cos_id: course.cos_id
+      });
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          // 設定 15 秒超時
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+          const [baseResponse, descResponse] = await Promise.all([
+            fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: params.toString(),
+              signal: controller.signal
+            }),
+            fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: params.toString(),
+              signal: controller.signal
+            })
+          ]);
+
+          clearTimeout(timeoutId);
+
+          if (!baseResponse.ok || !descResponse.ok) {
+            throw new Error(`HTTP ${baseResponse.status}/${descResponse.status}`);
+          }
+
+          let baseData, descData;
+
+          try {
+            const baseText = await baseResponse.text();
+            const descText = await descResponse.text();
+
+            baseData = JSON.parse(baseText);
+            descData = JSON.parse(descText);
+
+            return { baseData, descData };
+          } catch (parseError) {
+            if (parseError instanceof SyntaxError) {
+              throw new Error(`無法解析課程資料（可能課程無大綱）`);
+            }
+            throw parseError;
+          }
+        } catch (error) {
+          // 檢查是否為取消錯誤
+          if (error.name === 'AbortError') {
+            console.warn(`⏱️ 請求超時 (${course.cos_id})`);
+          }
+          if (attempt < maxRetries) {
+            console.log(`🔄 重試 ${attempt + 1}/${maxRetries}: ${course.cos_id}`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            continue;
+          }
+          throw error;
+        }
+      }
+    }
+
+    // 處理單個課程
+    async function processCourse(course) {
+      try {
+        const { baseData, descData } = await fetchCourseWithRetry(course);
+        const details = extractCourseDetailsFromAPI(baseData, descData, course);
+
+        // 從完整課程綱要提取關鍵字
+        if (details) {
+          const keywords = await extractKeywordsFromOutline(details, course.name);
+          details.searchKeywords = keywords;
+
+          // 儲存到緩存
+          const courseKey = getCourseKey(course);
+          courseDetailsCache[courseKey] = details;
+          saveCourseDetailsCache();
+
+          return { success: true, course };
+        } else {
+          console.warn(`⚠️ 無詳細資訊: ${course.name} (${course.cos_id})`);
+          return { success: false, course, error: '無課程詳細資訊' };
+        }
+      } catch (error) {
+        console.warn(`❌ 處理失敗: ${course.name} (${course.cos_id}) - ${error.message}`);
+        return { success: false, course, error: error.message };
+      }
+    }
+
+    // 批次處理課程
+    for (let i = 0; i < coursesToProcess.length; i += BATCH_SIZE) {
+      // 檢查是否被停止
+      if (!proactiveExtractionInProgress) {
+        console.log('⏹️ 主動提取已被停止');
+        break;
+      }
+
+      // 檢查是否暫停
+      if (proactiveExtractionPaused) {
+        // 顯示暫停狀態
+        if (learningProgress) {
+          learningProgressText.textContent = '⏸️ 已暫停...';
+        }
+      }
+      while (proactiveExtractionPaused) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      // 恢復後更新文字
+      if (learningProgress) {
+        learningProgressText.textContent = `🚀 主動提取關鍵字... ${succeeded} 成功${failed > 0 ? `, ${failed} 失敗` : ''}`;
+      }
+
+      // 取得本批次的課程
+      const batch = coursesToProcess.slice(i, i + BATCH_SIZE);
+
+      // 並行處理本批次的所有課程
+      const results = await Promise.allSettled(
+        batch.map(course => processCourse(course))
+      );
+
+      // 統計結果
+      results.forEach(result => {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            succeeded++;
+          } else {
+            failed++;
+          }
+        } else {
+          failed++;
+        }
+        processed++;
+      });
+
+      // 🎨 更新 UI 進度
+      if (learningProgress) {
+        const progress = Math.floor((processed / totalCount) * 100);
+        learningCounter.textContent = `${progress}% (${processed}/${totalCount})`;
+        learningProgressText.textContent = `🚀 主動提取關鍵字... ${succeeded} 成功${failed > 0 ? `, ${failed} 失敗` : ''}`;
+      }
+
+      // 每處理 10 門課程輸出一次進度
+      if (processed % 10 === 0 || processed === coursesToProcess.length) {
+        const progress = Math.floor((processed / totalCount) * 100);
+        console.log(`📈 主動提取進度：${progress}% (${processed}/${totalCount}) - 成功 ${succeeded}，失敗 ${failed}`);
+      }
+
+      // 批次之間延遲（避免觸發伺服器限流）
+      if (processed < coursesToProcess.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+      }
+    }
+
+    // 完成
+    const wasStopped = !proactiveExtractionInProgress;
+    proactiveExtractionInProgress = false;
+    const finalProgress = Math.floor((alreadyProcessed + succeeded) / allCourses.length * 100);
+
+    if (wasStopped) {
+      console.log(`⏹️ 主動提取已停止`);
+      console.log(`   ✅ 已提取：${succeeded} 門`);
+      console.log(`   ❌ 失敗：${failed} 門`);
+      console.log(`   📊 處理進度：${processed}/${totalCount}`);
+    } else {
+      console.log(`🎉 主動提取完成！`);
+      console.log(`   ✅ 新提取成功：${succeeded} 門`);
+      console.log(`   ❌ 失敗：${failed} 門`);
+      console.log(`   📊 總覆蓋率：${finalProgress}% (${alreadyProcessed + succeeded}/${allCourses.length})`);
+    }
+
+    // 🎨 更新 UI 最終狀態
+    if (learningProgress) {
+      const finalDisplayProgress = Math.floor((processed / totalCount) * 100);
+      if (wasStopped) {
+        learningProgressText.textContent = `⏹️ 已停止 - 處理了 ${processed}/${totalCount} 門課程`;
+        learningCounter.textContent = `${finalDisplayProgress}% (${processed}/${totalCount})`;
+      } else {
+        learningProgressText.textContent = `✅ 主動提取完成！處理了 ${succeeded} 門課程${failed > 0 ? `，${failed} 門失敗` : ''}`;
+        learningCounter.textContent = `100% (${totalCount}/${totalCount})`;
+      }
+
+      // 3秒後隱藏進度條
+      setTimeout(() => {
+        learningProgress.style.display = 'none';
+      }, 3000);
+    }
+
+    // 發送通知（如果成功提取了大量課程）
+    if (!wasStopped && succeeded >= 10) {
+      addLog('success', `主動提取完成：成功為 ${succeeded} 門課程提取關鍵字，總覆蓋率 ${finalProgress}%`);
+    }
   }
 
   // ==================== 整合到現有搜尋流程 ====================
