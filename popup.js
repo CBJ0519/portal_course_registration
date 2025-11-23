@@ -7129,6 +7129,7 @@ ${outlineContent}
         const details = extractCourseDetailsFromAPI(baseData, descData, course);
 
         // 從完整課程綱要提取關鍵字
+        const courseKey = getCourseKey(course);
         if (details) {
           const keywords = await extractKeywordsFromOutline(details, course.name);
           details.searchKeywords = keywords;
@@ -7137,14 +7138,13 @@ ${outlineContent}
           } else {
             console.log(`⚠️ [${course.name}] 無有效課程綱要內容，關鍵字為空`);
           }
+          // 儲存到緩存
+          courseDetailsCache[courseKey] = details;
         } else {
-          // 沒有課程詳細資訊，跳過
+          // 🔧 沒有課程詳細資訊，保存空標記避免重複嘗試
           console.log(`⚠️ [${course.name}] 無課程詳細資訊，跳過關鍵字提取`);
+          courseDetailsCache[courseKey] = { searchKeywords: '' };
         }
-
-        // 儲存到緩存（不立即寫入存儲，由批次處理統一保存）
-        const courseKey = getCourseKey(course);
-        courseDetailsCache[courseKey] = details;
 
         return { success: true, course };
       } catch (error) {
@@ -7392,6 +7392,7 @@ ${outlineContent}
 
     // 處理單個課程
     async function processCourse(course) {
+      const courseKey = getCourseKey(course);
       try {
         const { baseData, descData } = await fetchCourseWithRetry(course);
         const details = extractCourseDetailsFromAPI(baseData, descData, course);
@@ -7402,16 +7403,19 @@ ${outlineContent}
           details.searchKeywords = keywords;
 
           // 儲存到緩存（不立即寫入存儲，由批次處理統一保存）
-          const courseKey = getCourseKey(course);
           courseDetailsCache[courseKey] = details;
 
           return { success: true, course };
         } else {
+          // 🔧 即使失敗也保存空標記，避免重複嘗試無綱要的課程
           console.warn(`⚠️ 無詳細資訊: ${course.name} (${course.cos_id})`);
+          courseDetailsCache[courseKey] = { searchKeywords: '' };
           return { success: false, course, error: '無課程詳細資訊' };
         }
       } catch (error) {
+        // 🔧 即使失敗也保存空標記，避免重複嘗試失敗的課程
         console.warn(`❌ 處理失敗: ${course.name} (${course.cos_id}) - ${error.message}`);
+        courseDetailsCache[courseKey] = { searchKeywords: '' };
         return { success: false, course, error: error.message };
       }
     }
