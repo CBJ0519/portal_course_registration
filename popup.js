@@ -6991,10 +6991,9 @@ ${outlineContent}
           console.log(`⚠️ [${course.name}] 無課程詳細資訊，跳過關鍵字提取`);
         }
 
-        // 儲存到緩存
+        // 儲存到緩存（不立即寫入存儲，由批次處理統一保存）
         const courseKey = getCourseKey(course);
         courseDetailsCache[courseKey] = details;
-        saveCourseDetailsCache();
 
         return { success: true, course };
       } catch (error) {
@@ -7006,7 +7005,6 @@ ${outlineContent}
           courseDetailsCache[courseKey] = {
             searchKeywords: '' // 標記為空，表示已嘗試過
           };
-          saveCourseDetailsCache();
         }
 
         return { success: false, course, error };
@@ -7042,6 +7040,10 @@ ${outlineContent}
         processed++;
       });
 
+      // 💾 批次保存：每處理完一批就保存一次
+      saveCourseDetailsCache();
+      console.log(`💾 已保存批次進度：${processed}/${coursesToProcess.length}`);
+
       // 更新進度
       const progress = Math.floor((processed / coursesToProcess.length) * 100);
       learningCounter.textContent = `${progress}% (${processed}/${coursesToProcess.length})`;
@@ -7053,7 +7055,10 @@ ${outlineContent}
       }
     }
 
-    // 完成
+    // 完成 - 最後保存一次確保所有進度都被保存
+    saveCourseDetailsCache();
+    console.log(`💾 最終保存完成：${processed}/${coursesToProcess.length}`);
+
     autoLearningInProgress = false;
     if (autoLearningCancelled) {
       learningProgressText.textContent = `已停止 - 處理了 ${processed}/${coursesToProcess.length} 門課程`;
@@ -7239,10 +7244,9 @@ ${outlineContent}
           const keywords = await extractKeywordsFromOutline(details, course.name);
           details.searchKeywords = keywords;
 
-          // 儲存到緩存
+          // 儲存到緩存（不立即寫入存儲，由批次處理統一保存）
           const courseKey = getCourseKey(course);
           courseDetailsCache[courseKey] = details;
-          saveCourseDetailsCache();
 
           return { success: true, course };
         } else {
@@ -7300,6 +7304,10 @@ ${outlineContent}
         processed++;
       });
 
+      // 💾 批次保存：每處理完一批就保存一次
+      saveCourseDetailsCache();
+      console.log(`💾 已保存批次進度：${processed}/${totalCount}`);
+
       // 🎨 更新 UI 進度
       if (learningProgress) {
         const progress = Math.floor((processed / totalCount) * 100);
@@ -7319,7 +7327,10 @@ ${outlineContent}
       }
     }
 
-    // 完成
+    // 完成 - 最後保存一次確保所有進度都被保存
+    saveCourseDetailsCache();
+    console.log(`💾 最終保存完成：${processed}/${totalCount}`);
+
     const wasStopped = !proactiveExtractionInProgress;
     proactiveExtractionInProgress = false;
     const finalProgress = Math.floor((alreadyProcessed + succeeded) / allCourses.length * 100);
