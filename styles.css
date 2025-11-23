@@ -61,6 +61,10 @@ h2 {
   text-decoration: underline;
 }
 
+#keywordStatus {
+  margin-top: -6px;
+}
+
 .search-box {
   display: flex;
   gap: 8px;
