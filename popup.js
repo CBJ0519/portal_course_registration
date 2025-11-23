@@ -4118,6 +4118,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
   saveSettings.addEventListener('click', saveAISettings);
 
+  // 清除關鍵字快取按鈕事件
+  const clearKeywordCacheBtn = document.getElementById('clearKeywordCache');
+  clearKeywordCacheBtn.addEventListener('click', () => {
+    if (!confirm('確定要清除所有關鍵字快取嗎？\n\n這將清除所有已提取的關鍵字，並在下次啟動時重新提取。\n（課程基本資料不會被清除）')) {
+      return;
+    }
+
+    console.log('🗑️ 開始清除關鍵字快取...');
+
+    // 清除記憶體中的快取
+    courseDetailsCache = {};
+
+    // 清除 storage 中的快取
+    chrome.storage.local.set({ courseDetailsCache: {} }, () => {
+      console.log('✅ 關鍵字快取已清除');
+      alert('關鍵字快取已清除！\n\n請重新載入擴充功能，系統將自動重新提取所有課程的關鍵字。');
+
+      // 更新狀態顯示
+      updateKeywordExtractionStatus();
+    });
+  });
+
   // 回報問題按鈕事件
   reportIssue.addEventListener('click', () => {
     window.open('https://forms.gle/SbPcqgVRuNSdVyqK9', '_blank');
