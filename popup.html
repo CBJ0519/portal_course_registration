@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NYCU 課程搜尋</title>
+  <title>NYCU 選課助手</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,7 +13,14 @@
       <button id="backBtn">← 返回</button>
     </div>
 
-    <h1 id="pageTitle">NYCU 課程搜尋</h1>
+    <div class="header-row">
+      <h1 id="pageTitle">NYCU 選課助手</h1>
+      <div class="header-buttons">
+        <button id="reportIssue" class="report-btn" title="回報問題">🐛</button>
+        <button id="logBtn" class="log-btn" title="查看搜尋日誌">📋</button>
+        <button id="settingsBtn" class="settings-btn" title="設定">⚙️</button>
+      </div>
+    </div>
 
     <div id="dataStatus" class="data-status"></div>
 
@@ -21,37 +28,279 @@
     <div id="tabButtons" class="tab-buttons">
       <button id="searchTab" class="tab-btn active">🔍 搜尋課程</button>
       <button id="bookmarksTab" class="tab-btn">⭐ 我的書籤 <span id="bookmarkCount" class="bookmark-count">0</span></button>
+      <button id="timetableTab" class="tab-btn">📅 我的課表 <span id="timetableCount" class="bookmark-count">0</span></button>
+      <button id="helpTab" class="tab-btn">📖 使用說明</button>
     </div>
 
     <!-- 搜尋區域 -->
     <div id="searchArea" class="tab-content active">
     <div class="search-box">
+      <button id="aiSearchToggle" class="ai-search-toggle" title="AI 搜尋（使用 Google Gemini）" style="display: none;">
+        <span class="ai-icon">🤖</span>
+        <span class="ai-status">OFF</span>
+      </button>
       <input
         type="text"
         id="searchInput"
-        placeholder="輸入關鍵字，多條件用空白隔開"
+        placeholder="智能搜尋：支援自然語言與多關鍵字查詢"
         autocomplete="off"
       >
+      <div id="aiModeSelector" class="ai-mode-selector-inline" style="display: none;">
+        <label class="mode-option-inline">
+          <input type="radio" name="aiMode" value="loose" checked>
+          <span>快速</span>
+        </label>
+        <label class="mode-option-inline">
+          <input type="radio" name="aiMode" value="precise">
+          <span>精準</span>
+        </label>
+      </div>
       <button id="searchBtn">搜尋</button>
+    </div>
+    <div id="aiThinking" class="ai-thinking" style="display: none;">
+      <span class="thinking-icon">🤔</span>
+      <span class="thinking-text">
+        <span id="aiProgressText">AI 正在思考...</span>
+        <span id="aiTimer" class="ai-timer">(0秒)</span>
+      </span>
+      <button id="stopSearchBtn" class="stop-search-btn" title="停止搜尋">⏹</button>
+      <div class="ai-progress-bar">
+        <div id="aiProgressFill" class="ai-progress-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+    <div id="cancelWarning" class="cancel-warning" style="display: none;">
+      <span class="warning-icon">⚠️</span>
+      <span class="warning-text">將於此步驟完成後終止搜尋</span>
     </div>
 
     <div class="search-hint">
-      <div class="hint-title">💡 搜尋範例：</div>
+      <div class="hint-title">💡 智能搜尋（結果按相關度排序）：</div>
       <div class="hint-examples">
-        <span class="hint-item">課程名稱：「微積分」</span>
-        <span class="hint-item">課程簡稱：「邏設」「線代」「計組」</span>
-        <span class="hint-item">課程代碼：「DCP1192」</span>
-        <span class="hint-item">教師：「王禹超」</span>
-        <span class="hint-item">系所：「資工系」「資訊工程」</span>
-        <span class="hint-item">學院：「電機學院」「理學院」</span>
-        <span class="hint-item">時間：「M」「T56」「R34」</span>
-        <span class="hint-item">教室：「EC015」「EC114」</span>
-        <span class="hint-item">多條件：「邏設 資工」「M56 資工」「微積分 王禹超」</span>
+        <span class="hint-item">單一關鍵字：「微積分」「邏設」「DCP1192」</span>
+        <span class="hint-item">多關鍵字查詢：「邏設 資工」「演算法 週一」</span>
+        <span class="hint-item">自然語言：「王老師 微積分」「電機學院 必修」</span>
+        <span class="hint-item">時間查詢：「M」(週一)「T56」(週二5-6節)</span>
+        <span class="hint-item">或使用下方「進階篩選」精確查找</span>
       </div>
     </div>
 
+    <!-- 特殊指令快捷按鈕 -->
+    <div id="specialCommandsBar" class="special-commands-bar" style="display: none;">
+      <div class="special-commands-title">🎯 特殊指令（需啟用 AI）：</div>
+      <div class="special-commands-buttons">
+        <button class="special-cmd-btn" data-command="{空堂}" title="插入 {空堂} 指令 - 查詢我的空堂時間的課程">
+          <span class="cmd-icon">📋</span>
+          <span class="cmd-text">{空堂}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{除了}" title="插入 {除了} 指令 - 排除特定條件">
+          <span class="cmd-icon">🚫</span>
+          <span class="cmd-text">{除了}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{上午}" title="插入 {上午} 指令 - 查詢上午時段(1-4節)的課程">
+          <span class="cmd-icon">🌅</span>
+          <span class="cmd-text">{上午}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{下午}" title="插入 {下午} 指令 - 查詢下午時段(5-9節)的課程">
+          <span class="cmd-icon">🌆</span>
+          <span class="cmd-text">{下午}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{晚上}" title="插入 {晚上} 指令 - 查詢晚上時段(a-c節)的課程">
+          <span class="cmd-icon">🌙</span>
+          <span class="cmd-text">{晚上}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{必修}" title="插入 {必修} 指令 - 篩選必修課程">
+          <span class="cmd-icon">📕</span>
+          <span class="cmd-text">{必修}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{選修}" title="插入 {選修} 指令 - 篩選選修課程">
+          <span class="cmd-icon">📗</span>
+          <span class="cmd-text">{選修}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{通識}" title="插入 {通識} 指令 - 篩選通識課程">
+          <span class="cmd-icon">📘</span>
+          <span class="cmd-text">{通識}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{低學分}" title="插入 {低學分} 指令 - 篩選1-2學分課程">
+          <span class="cmd-icon">1️⃣</span>
+          <span class="cmd-text">{低學分}</span>
+        </button>
+        <button class="special-cmd-btn" data-command="{高學分}" title="插入 {高學分} 指令 - 篩選3學分以上課程">
+          <span class="cmd-icon">3️⃣</span>
+          <span class="cmd-text">{高學分}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 篩選器區域 -->
+    <div class="filter-container">
+      <div class="filter-header" id="filterHeader">
+        <span class="filter-title">🔍 進階篩選</span>
+        <div class="filter-header-actions">
+          <button id="clearFilters" class="filter-clear-btn">清除篩選</button>
+        </div>
+      </div>
+
+      <div class="filter-sections" id="filterSections">
+        <!-- 課程類型篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">課程類型</div>
+          <div class="filter-options">
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="required">
+              <span>必修</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="elective">
+              <span>選修</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="general">
+              <span>通識</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="core">
+              <span>核心</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="physical">
+              <span>體育</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="language">
+              <span>外語</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-course-type" value="service">
+              <span>服務學習</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 學分數篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">學分數</div>
+          <div class="filter-options">
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="0">
+              <span>0學分</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="1">
+              <span>1學分</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="2">
+              <span>2學分</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="3">
+              <span>3學分</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="4">
+              <span>4學分</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-credits" value="5+">
+              <span>5+學分</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 學院篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">學院</div>
+          <select id="filterCollege" class="filter-select">
+            <option value="">全部學院</option>
+            <!-- 動態生成學院選項 -->
+          </select>
+        </div>
+
+        <!-- 系所篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">系所</div>
+          <select id="filterDepartment" class="filter-select">
+            <option value="">全部系所</option>
+            <!-- 動態生成系所選項 -->
+          </select>
+        </div>
+
+        <!-- 星期篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">上課星期</div>
+          <div class="filter-options">
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="M">
+              <span>週一</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="T">
+              <span>週二</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="W">
+              <span>週三</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="R">
+              <span>週四</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="F">
+              <span>週五</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="S">
+              <span>週六</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-weekday" value="U">
+              <span>週日</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 節次篩選 -->
+        <div class="filter-section">
+          <div class="filter-section-title">上課節次</div>
+          <div class="filter-options">
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-period" value="1234">
+              <span>上午(1-4節)</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-period" value="n">
+              <span>中午(n節)</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-period" value="56789">
+              <span>下午(5-9節)</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" class="filter-period" value="abc">
+              <span>晚上(a-c節)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 結束篩選器區域 -->
+
     <div id="loading" class="loading" style="display: none;">
       搜尋中...
+    </div>
+
+    <!-- 智能學習進度條 -->
+    <div id="learningProgress" class="learning-progress" style="display: none;">
+      <span class="learning-icon">🧠</span>
+      <span class="learning-text">
+        <span id="learningProgressText">正在提取關鍵字...</span>
+        <span id="learningCounter" class="learning-counter">(0/0)</span>
+      </span>
+      <button id="stopLearningBtn" class="stop-learning-btn" title="停止學習">⏹</button>
+      <div class="learning-progress-bar">
+        <div id="learningProgressFill" class="learning-progress-fill" style="width: 0%;"></div>
+      </div>
     </div>
 
     <div id="results" class="results">
@@ -83,6 +332,485 @@
     </div>
     <!-- 結束書籤區域 -->
 
+    <!-- 課表區域 -->
+    <div id="timetableArea" class="tab-content">
+      <div class="timetable-header">
+        <div class="timetable-header-left">
+          <h2>我的課表</h2>
+          <div class="timetable-stats">
+            <span id="timetableCredits" class="timetable-credit-display">總學分：0</span>
+          </div>
+        </div>
+        <div class="timetable-header-right">
+          <label class="timetable-option">
+            <input type="checkbox" id="showWeekendCheckbox">
+            <span>顯示週六日</span>
+          </label>
+          <button id="toggleViewBtn" class="toggle-view-btn">切換為清單模式</button>
+          <button id="exportTimetableBtn" class="export-btn">📸 匯出圖片</button>
+          <button id="exportCalendarBtn" class="export-btn">📅 匯出日曆</button>
+          <button id="clearAllTimetable" class="clear-btn" style="display: none;">🗑️ 清空課表</button>
+        </div>
+      </div>
+
+      <!-- 格子式課表檢視 -->
+      <div id="gridViewContainer" class="grid-view-container">
+        <div id="timetableGrid" class="timetable-grid">
+          <!-- 動態生成格子式課表 -->
+        </div>
+      </div>
+
+      <!-- 清單式課表檢視 -->
+      <div id="listViewContainer" class="list-view-container" style="display: none;">
+        <div id="timetableList" class="timetable-list">
+          <!-- 動態生成清單式課表 -->
+        </div>
+      </div>
+
+      <div id="timetablePlaceholder" class="placeholder">
+        尚未加入任何課程到課表<br>
+        <span style="font-size: 12px; color: #999; margin-top: 8px; display: block;">
+          在搜尋結果或書籤中點擊「加入課表」按鈕即可建立課表
+        </span>
+      </div>
+    </div>
+    <!-- 結束課表區域 -->
+
+    <!-- 使用說明區域 -->
+    <div id="helpArea" class="tab-content">
+      <div class="help-content">
+        <section class="help-section">
+          <h2 class="help-title">🎯 功能介紹</h2>
+          <div class="help-text">
+            <p>NYCU 選課助手提供以下功能：</p>
+            <ul>
+              <li><strong>智能搜尋</strong>：支援課程名稱、簡稱、代碼、教師、系所、時間等多條件搜尋</li>
+              <li><strong>AI 搜尋</strong>：啟用 AI 後可使用自然語言查詢、特殊指令、快速/精準模式</li>
+              <li><strong>AI 自我學習</strong>：自動從查看過的課程概述中提取中英文關鍵字，越用越聰明</li>
+              <li><strong>搜尋日誌</strong>：完整記錄 AI 搜尋過程，支援展開/收合查看詳細資訊</li>
+              <li><strong>書籤管理</strong>：收藏常用課程，方便快速查看</li>
+              <li><strong>課表製作</strong>：建立個人課表，支援格子式和清單式檢視</li>
+              <li><strong>詳細資訊</strong>：查看課程評分方式、教學目標、先修科目等完整資訊</li>
+              <li><strong>匯出功能</strong>：匯出課表圖片或匯出到 Google Calendar</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">🔍 搜尋技巧</h2>
+          <div class="help-text">
+            <h3>基本搜尋</h3>
+            <ul>
+              <li><strong>課程名稱</strong>：直接輸入課程名稱，例如「微積分」、「資料結構」</li>
+              <li><strong>課程簡稱</strong>：支援簡稱識別，例如「邏設」→「邏輯設計」、「線代」→「線性代數」、「計組」→「計算機組織」</li>
+              <li><strong>課程代碼</strong>：輸入完整或部分代碼，例如「DCP1192」、「DCP」</li>
+              <li><strong>教師姓名</strong>：輸入教師姓名，例如「王禹超」、「張三」</li>
+              <li><strong>系所搜尋</strong>：輸入系所名稱，例如「資工系」、「資訊工程」、「電機系」</li>
+              <li><strong>學院搜尋</strong>：輸入學院名稱，例如「電機學院」、「理學院」、「管理學院」</li>
+              <li><strong>教室搜尋</strong>：輸入教室代碼，例如「EC015」、「EC114」</li>
+            </ul>
+
+            <h3>時間搜尋</h3>
+            <ul>
+              <li><strong>星期代碼</strong>：M(一) T(二) W(三) R(四) F(五) S(六) U(日)</li>
+              <li><strong>節次代碼</strong>：1-9, n, a-d（n=中午時段, a=第10節, b=第11節, c=第12節, d=第13節）</li>
+              <li><strong>時段分類</strong>：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>上午：1-4節, n節（08:00-12:10）</li>
+                  <li>下午：5-9節（13:20-17:30）</li>
+                  <li>晚上：a-c節（18:30-21:35）</li>
+                </ul>
+              </li>
+              <li><strong>範例</strong>：「M」(星期一所有課程)、「M3」(星期一第3節)、「T56」(星期二5-6節)、「Wn」(星期三n節)</li>
+            </ul>
+
+            <h3>多條件搜尋</h3>
+            <p>用空格分隔多個關鍵字，例如：</p>
+            <ul>
+              <li>「邏設 資工」→ 資工系的邏輯設計課程</li>
+              <li>「M56 資工」→ 星期一5-6節的資工系課程</li>
+              <li>「微積分 王禹超」→ 王禹超老師的微積分課程</li>
+            </ul>
+
+            <h3>🧠 智能學習搜尋（AI 輔助）</h3>
+            <div class="help-tip">
+              <strong>💡 自動學習，越用越聰明</strong><br>
+              啟用 AI 後，系統會自動學習你查看過的課程，逐步擴展搜尋範圍。
+            </div>
+            <p><strong>運作原理：</strong></p>
+            <ul>
+              <li><strong>自動提取關鍵字</strong>：當你查看課程的「📋 完整資訊」時，AI 會自動從課程概述中提取關鍵字</li>
+              <li><strong>中英文雙語支援</strong>：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>英文綱要：提取英文術語並提供中文翻譯（例如：data structures → 資料結構）</li>
+                  <li>中文綱要：提取中文關鍵字並保留英文專有名詞（例如：Python、Machine Learning）</li>
+                  <li>搜尋時中英文皆可匹配（搜尋「資料結構」或「data structures」都能找到）</li>
+                </ul>
+              </li>
+              <li><strong>漸進式學習</strong>：查看越多課程，可搜尋的關鍵字越豐富</li>
+              <li><strong>節省儲存空間</strong>：只儲存精煉的關鍵字，不儲存完整綱要</li>
+            </ul>
+
+            <p><strong>使用範例：</strong></p>
+            <ul>
+              <li>查看「資料結構」課程詳情後，搜尋「陣列」「linked list」「樹狀結構」都能找到這門課</li>
+              <li>查看英文授課的「Machine Learning」課程後，搜尋「機器學習」「神經網路」「neural network」都能匹配</li>
+              <li>技術術語搜尋：查看過 Python 相關課程後，搜尋「pandas」「numpy」可能找到相關課程</li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>⚡ 提示</strong><br>
+              • 功能需要啟用 AI 才能使用（設定 → 啟用 AI 搜尋）<br>
+              • 關鍵字會永久儲存在本地，下次搜尋時自動使用<br>
+              • 如果 AI 提取失敗，系統會自動使用完整概述作為後備<br>
+              • 第一次查看課程時需要等待幾秒鐘讓 AI 提取關鍵字
+            </div>
+
+            <h3>🤖 AI 搜尋模式</h3>
+            <div class="help-tip">
+              <strong>💡 啟用 AI 搜尋後可使用</strong><br>
+              在搜尋框右側可選擇「快速」或「精準」模式，提供不同的搜尋體驗。
+            </div>
+            <ul>
+              <li><strong>快速模式（預設）</strong>：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>速度更快：只執行 Step 0（關鍵字提取）和 Step 1（粗篩）</li>
+                  <li>結果更多：保留所有相關課程，寬鬆匹配</li>
+                  <li>適用場景：快速瀏覽大量相關課程、探索性搜尋</li>
+                </ul>
+              </li>
+              <li><strong>精準模式</strong>：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>更準確：執行完整的 Step 0 → Step 1 → Step 2 流程</li>
+                  <li>更嚴格：逐一檢查屬性，精準匹配查詢意圖</li>
+                  <li>適用場景：需要精確查找特定課程、條件明確的搜尋</li>
+                  <li>搜尋時間：通常需要較長時間</li>
+                </ul>
+              </li>
+              <li><strong>搜尋時間顯示</strong>：搜尋完成後會在日誌中顯示總花費時間</li>
+            </ul>
+
+            <h3>🎯 特殊指令（需啟用 AI 搜尋）</h3>
+            <div class="help-tip">
+              <strong>💡 智能指令讓搜尋更強大</strong><br>
+              特殊指令需要搭配 AI 搜尋使用，可以實現更複雜的查詢功能。
+            </div>
+
+            <h4>1. {空堂} 指令</h4>
+            <p>自動偵測「我的課表」中的空堂時間，找出符合條件的課程。</p>
+            <ul>
+              <li><strong>範例</strong>：「{空堂}的資工課」→ 搜尋我的空堂時間的資工系課程</li>
+              <li><strong>範例</strong>：「{空堂}必修」→ 搜尋我的空堂時間的必修課</li>
+              <li><strong>範例</strong>：「{空堂}{空閒}」→ 三個寫法都可以</li>
+              <li><strong>說明</strong>：系統會自動分析你的課表，找出所有空堂時段，然後搜尋這些時段的課程</li>
+              <li><strong>提示</strong>：先在「我的課表」中加入一些課程，才能使用此功能</li>
+            </ul>
+
+            <h4>2. {除了} 連接詞</h4>
+            <p>排除特定條件，讓搜尋結果更精確。</p>
+            <ul>
+              <li><strong>範例</strong>：「資工選修{除了}微積分」→ 搜尋資工系選修課，但排除名稱包含「微積分」的課程</li>
+              <li><strong>範例</strong>：「星期一的課{除了}王禹超」→ 搜尋星期一的課程，但排除王禹超老師的課</li>
+              <li><strong>範例</strong>：「電機學院{除了}必修」→ 搜尋電機學院的課程，但排除必修課</li>
+              <li><strong>說明</strong>：可以排除課程名稱、教師、系所、課程類型等任何屬性</li>
+              <li><strong>提示</strong>：可以與其他指令組合使用，例如「{空堂}的課{除了}體育」</li>
+            </ul>
+
+            <h4>3. 時間指令</h4>
+            <p>快速篩選特定時間的課程。</p>
+            <ul>
+              <li><strong>{上午}</strong>：「{上午}的通識課」→ 搜尋上午時段（1-4節）的通識課</li>
+              <li><strong>{下午}</strong>：「{下午}的資工課」→ 搜尋下午時段（5-9節）的資工課</li>
+              <li><strong>{晚上}</strong>：「{晚上}的課」→ 搜尋晚上時段（a-c節）的課程</li>
+              <li><strong>說明</strong>：根據時段篩選課程</li>
+            </ul>
+
+            <h4>4. 課程類型指令</h4>
+            <p>快速篩選特定類型的課程。</p>
+            <ul>
+              <li><strong>{必修}</strong>：「{必修}的資工課」→ 搜尋資工系必修課</li>
+              <li><strong>{選修}</strong>：「{選修}的電機課」→ 搜尋電機系選修課</li>
+              <li><strong>{通識}</strong>：「{通識}{上午}」→ 搜尋上午的通識課</li>
+              <li><strong>說明</strong>：自動篩選必修、選修或通識課程</li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>📘 關於通識課程識別</strong><br>
+              通識課程在系統中的識別方式：<br>
+              • 通識課程在選課路徑（paths）中會包含「核心課程」或「學士班共同課程」<br>
+              • 課程類型（cos_type）可能顯示為「核心」或「選修」，而非「通識」<br>
+              • 使用 {通識} 指令會自動檢查這些路徑資訊進行篩選
+            </div>
+
+            <h4>5. 學分指令</h4>
+            <p>根據學分數篩選課程。</p>
+            <ul>
+              <li><strong>{低學分}</strong>：「{低學分}的課」→ 搜尋 1-2 學分的課程</li>
+              <li><strong>{高學分}</strong>：「{高學分}的課」→ 搜尋 3 學分以上的課程</li>
+              <li><strong>範例</strong>：「{低學分}{空堂}」→ 搜尋我的空堂時間的低學分課程</li>
+            </ul>
+
+            <h4>組合使用範例</h4>
+            <ul>
+              <li>「{空堂}的選修課{除了}體育」→ 我的空堂時間的選修課，但不要體育課</li>
+              <li>「{空堂}資工{除了}必修」→ 我的空堂時間的資工系課程，但不要必修課</li>
+              <li>「{上午}{通識}」→ 上午的通識課</li>
+              <li>「{下午}{必修}」→ 下午的必修課</li>
+              <li>「{低學分}{晚上}的課{除了}體育」→ 晚上的低學分課程，但不要體育課</li>
+              <li>「{空堂}{高學分}{選修}」→ 我的空堂時間的高學分選修課</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">⭐ 書籤功能</h2>
+          <div class="help-text">
+            <ul>
+              <li><strong>加入書籤</strong>：在搜尋結果中點擊課程卡片右上角的 ☆ 星號圖示</li>
+              <li><strong>查看書籤</strong>：切換到「⭐ 我的書籤」分頁，分頁標籤會顯示書籤數量</li>
+              <li><strong>移除書籤</strong>：再次點擊 ★ 星號圖示，或使用「🗑️ 清空所有書籤」按鈕</li>
+              <li><strong>持久儲存</strong>：書籤資料永久保存在本地，除非手動清空</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">📅 課表功能</h2>
+          <div class="help-text">
+            <h3>建立課表</h3>
+            <ul>
+              <li>在搜尋結果或書籤中點擊「+ 加入課表」按鈕</li>
+              <li>點擊空白時段可查看該時段的所有可選課程</li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>💡 不完整課程提示</strong><br>
+              如果課程的某些時段被移除或因衝堂而未完整顯示，該課程會以「淡化樣式」顯示（半透明、去色），提醒你這門課沒有完整加入課表。
+            </div>
+
+            <h3>課表視覺化</h3>
+            <div class="help-tip">
+              <strong>🎨 課程類別顏色區分</strong><br>
+              課表會根據課程類型自動使用不同顏色：<br>
+              • 🔴 必修課程：紅色系<br>
+              • 🟢 選修課程：綠色系<br>
+              • 🟣 通識課程：紫色系<br>
+              • 🟠 體育課程：橘色系<br>
+              • 🔵 外語課程：藍色系<br>
+              • 🩵 服務學習：青色系
+            </div>
+
+            <h3>管理課表</h3>
+            <ul>
+              <li><strong>查看課程資訊</strong>：點擊課表中的課程卡片，快速查看課程詳細資訊（時間、地點、學分、評分方式等）</li>
+              <li><strong>切換檢視</strong>：使用「切換為清單模式」按鈕在格子式和清單式之間切換</li>
+              <li><strong>顯示週末</strong>：勾選「顯示週六日」查看週末課程</li>
+              <li><strong>衝堂處理</strong>：使用 ▲▼ 按鈕切換同時段的不同課程，衝堂課程會以黃色背景標示</li>
+              <li><strong>移除課程</strong>：點擊課程格子上的 × 按鈕</li>
+              <li><strong>清空課表</strong>：使用「🗑️ 清空課表」按鈕一鍵清空所有課程</li>
+              <li><strong>課程計數</strong>：分頁標籤會顯示課表中的課程數量</li>
+            </ul>
+
+            <h3>學分計算</h3>
+            <p>課表會自動計算總學分，顯示在「我的課表」標題旁。</p>
+
+            <div class="help-tip">
+              <strong>📌 計算規則</strong><br>
+              • 只計算已加入課表的課程<br>
+              • 如果有衝堂課程，只計算「目前顯示在課表上」的那一門課的學分
+            </div>
+
+            <div class="help-example">
+              <strong>範例說明：</strong><br>
+              假設你加入了「微積分」(3學分) 和「物理」(3學分)，兩門課都在星期一第3-4節：<br>
+              • 因為時間衝突，課表上只會顯示其中一門課<br>
+              • 總學分會顯示「3」(不是6，因為只有一門課在課表上顯示)<br>
+              • 使用 ▲▼ 切換到另一門課時，總學分仍然是「3」<br>
+              • 如果你又加入「英文」(2學分)，且沒有衝堂，總學分會變成「5」(3+2)
+            </div>
+
+            <h3>匯出課表</h3>
+            <ul>
+              <li><strong>📸 匯出圖片</strong>：將課表匯出為 PNG 圖片（A4 尺寸，適合列印）</li>
+              <li><strong>📅 匯出日曆</strong>：匯出為 .ics 檔案，可匯入 Google Calendar、Outlook 等</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">📋 詳細資訊</h2>
+          <div class="help-text">
+            <h3>查看課程資訊</h3>
+            <ul>
+              <li><strong>📋 查看完整資訊</strong>：顯示詳細頁面，包含：
+                <ul style="margin-top: 6px; margin-left: 20px;">
+                  <li>課程基本資訊（課程代碼、學分、必選修、時間地點）</li>
+                  <li>選課路徑（類型 / 類別 / 學院 / 系所 / 年級）</li>
+                  <li>授課教師與聯絡方式</li>
+                  <li>先修科目或先備能力</li>
+                  <li>課程概述與教學目標</li>
+                  <li>評量方式與配分細節</li>
+                  <li>教科書與教學方法</li>
+                  <li>師生晤談時間</li>
+                </ul>
+              </li>
+              <li><strong>📊 查看歐趴糖評價</strong>：開啟 OPT 網站查看課程評價（需登入帳號）</li>
+              <li><strong>📄 開啟課程綱要</strong>：在詳細資訊頁面底部可直接開啟官方課程綱要頁面</li>
+              <li><strong>快速資訊</strong>：點擊課表中的課程格子可快速查看基本資訊與評分方式</li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>📍 地點顯示</strong><br>
+              系統會自動將教室代碼（如 EC115）轉換為完整地點名稱（如「新竹光復校區 工程三館 115」），方便你快速了解上課地點。
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">📅 Google Calendar 匯入教學</h2>
+          <div class="help-text">
+            <h3>建議方式（方便管理）</h3>
+            <ol>
+              <li>在 Google Calendar 左側點擊「其他日曆」旁的 <strong>+</strong></li>
+              <li>選擇「<strong>建立新日曆</strong>」</li>
+              <li>命名為「NYCU 課表」，點擊「建立日曆」</li>
+              <li>再次點擊「其他日曆」旁的 <strong>+</strong></li>
+              <li>選擇「<strong>匯入</strong>」</li>
+              <li>選擇下載的 .ics 檔案</li>
+              <li>在「新增至日曆」選擇「NYCU 課表」</li>
+              <li>點擊「匯入」</li>
+            </ol>
+
+            <h3>刪除課表</h3>
+            <p>如果需要重新匯入或刪除：</p>
+            <ul>
+              <li>點擊「NYCU 課表」旁的 <strong>...</strong></li>
+              <li>選擇「設定與共用」→「移除日曆」</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">💾 資料管理</h2>
+          <div class="help-text">
+            <h3>課程資料更新</h3>
+            <ul>
+              <li><strong>首次使用</strong>：訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank" class="help-link">課程時間表系統</a>，等待約 5 分鐘自動載入</li>
+              <li><strong>自動更新</strong>：課程資料每 7 天自動更新一次</li>
+              <li><strong>手動更新</strong>：點擊「重新載入課程資料」按鈕（約需 5 分鐘）</li>
+              <li><strong>本地儲存</strong>：所有資料儲存在本地，不會上傳到伺服器</li>
+            </ul>
+
+            <h3>資料狀態提示</h3>
+            <p>頁面頂部會顯示資料狀態：</p>
+            <ul>
+              <li><strong>🟢 綠色</strong>：資料新鮮（1天內）</li>
+              <li><strong>🔵 藍色</strong>：資料有效（1-7天）</li>
+              <li><strong>🟠 橘色</strong>：資料過期（超過7天），建議更新</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">📋 搜尋日誌</h2>
+          <div class="help-text">
+            <h3>查看日誌</h3>
+            <ul>
+              <li><strong>開啟日誌</strong>：點擊右上角的 📋 按鈕開啟搜尋日誌面板</li>
+              <li><strong>日誌內容</strong>：記錄所有 AI 搜尋過程的詳細資訊，包括：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>Step 0：關鍵字提取結果</li>
+                  <li>Step 1：粗篩結果與課程數量</li>
+                  <li>Step 2：精準匹配結果（精準模式）</li>
+                  <li>搜尋總花費時間</li>
+                  <li>錯誤訊息與警告</li>
+                </ul>
+              </li>
+            </ul>
+
+            <h3>日誌功能</h3>
+            <ul>
+              <li><strong>展開/收合</strong>：點擊物件或陣列旁的 ▶ 符號可展開查看詳細內容</li>
+              <li><strong>複製日誌</strong>：點擊「複製日誌」按鈕將所有日誌（完整展開）複製到剪貼簿</li>
+              <li><strong>清除日誌</strong>：點擊「清除日誌」按鈕清空所有記錄</li>
+              <li><strong>即時更新</strong>：日誌會在搜尋過程中即時更新顯示</li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>🎨 Console 風格</strong><br>
+              日誌系統模仿 Chrome DevTools Console 的設計：<br>
+              • 支援物件和陣列的展開/收合<br>
+              • 不同資料類型使用不同顏色顯示<br>
+              • 顯示時間戳記，方便追蹤搜尋流程<br>
+              • 適合除錯和了解 AI 搜尋邏輯
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">❓ 常見問題</h2>
+          <div class="help-text">
+            <h3>Q: 首次使用需要做什麼？</h3>
+            <p>A: 訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank" class="help-link">https://timetable.nycu.edu.tw/</a>，等待約 5 分鐘自動載入課程資料。</p>
+
+            <h3>Q: 搜尋不到課程怎麼辦？</h3>
+            <p>A: 確認課程資料已載入完成（查看頂部資料狀態提示），或點擊「重新載入課程資料」按鈕更新資料。</p>
+
+            <h3>Q: 課表衝堂怎麼辦？</h3>
+            <p>A: 使用 ▲▼ 按鈕在同時段的不同課程之間切換，選擇要顯示的課程。衝堂課程會以黃色背景標示。</p>
+
+            <h3>Q: 為什麼有些課程是淡淡的？</h3>
+            <p>A: 這代表該課程沒有完整加入課表（部分時段被移除或因衝堂未完整顯示），淡化顯示是提醒你該課程不完整。</p>
+
+            <h3>Q: 學分計算為什麼不是所有課程加總？</h3>
+            <p>A: 學分只計算「目前顯示在課表上」的課程。如果有衝堂課程，只會計算其中一門課的學分，不會重複累加。</p>
+
+            <h3>Q: 匯出的課表圖片太小？</h3>
+            <p>A: 匯出的圖片為 A4 尺寸（1240x1754 像素），已優化列印效果。建議列印時選擇 A4 紙張。</p>
+
+            <h3>Q: 可以在其他日曆軟體使用嗎？</h3>
+            <p>A: 可以！匯出的 .ics 檔案支援所有主流日曆應用（Google Calendar、Outlook、Apple Calendar 等）。</p>
+
+            <h3>Q: 課程顏色代表什麼意思？</h3>
+            <p>A: 課程會根據類型顯示不同顏色：必修（紅色）、選修（綠色）、通識（紫色）、體育（橘色）、外語（藍色）、服務學習（青色）。</p>
+
+            <h3>Q: 如何查看課程的選課路徑？</h3>
+            <p>A: 點擊「📋 查看完整資訊」按鈕，詳細頁面會顯示所有可用的選課路徑（類型 / 類別 / 學院 / 系所 / 年級）。</p>
+
+            <h3>Q: 快速模式和精準模式有什麼差別？</h3>
+            <p>A: 快速模式只執行粗篩，速度快但結果較多；精準模式執行完整流程，結果更精確但需要較長時間。一般探索性搜尋建議使用快速模式，明確目標時使用精準模式。</p>
+
+            <h3>Q: 如何查看 AI 搜尋的詳細過程？</h3>
+            <p>A: 點擊右上角的 📋 按鈕開啟搜尋日誌，可以看到完整的搜尋過程、關鍵字提取結果、篩選步驟等詳細資訊。</p>
+
+            <h3>Q: 為什麼搜尋「通識」找不到課程？</h3>
+            <p>A: 需要啟用 AI 搜尋並使用 {通識} 指令。通識課程在系統中的課程類型顯示為「核心」或「選修」，需要透過選課路徑來識別。{通識} 指令會自動處理這個邏輯。</p>
+
+            <h3>Q: n 節是什麼時候上課？</h3>
+            <p>A: n 節是中午時段（約 12:10-13:10），被歸類為上午時段。搜尋上午課程時會包含 1-4 節和 n 節。</p>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h2 class="help-title">🔗 相關連結</h2>
+          <div class="help-text">
+            <ul>
+              <li><strong>課程時間表</strong>：<a href="https://timetable.nycu.edu.tw/" target="_blank">https://timetable.nycu.edu.tw/</a></li>
+              <li><strong>歐趴糖 OPT</strong>：<a href="https://www.1111opt.com.tw/" target="_blank">https://www.1111opt.com.tw/</a></li>
+              <li><strong>GitHub 專案</strong>：<a href="https://github.com/CBJ0519/portal_course_registration" target="_blank">GitHub</a></li>
+              <li><strong>問題回報</strong>：<a href="https://github.com/CBJ0519/portal_course_registration/issues" target="_blank">Issues</a></li>
+            </ul>
+          </div>
+        </section>
+
+        <div class="help-footer">
+          <p>💡 提示：按下快速鍵可快速切換分頁，讓操作更流暢！</p>
+          <p class="help-version">版本 2.1 | MIT License</p>
+        </div>
+      </div>
+    </div>
+    <!-- 結束使用說明區域 -->
+
     <!-- 課程詳細資訊頁面 -->
     <div id="detailPage" class="page-content" style="display: none;">
       <div id="detailPageContent" class="detail-page-content">
@@ -93,6 +821,115 @@
 
   </div>
 
+  <!-- 日誌面板 -->
+  <div id="logModal" class="modal" style="display: none;">
+    <div class="modal-content log-modal-content">
+      <div class="modal-header">
+        <h2>📋 搜尋日誌</h2>
+        <button class="modal-close" id="closeLog">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="log-container">
+          <div id="logContent" class="log-content">
+            <div class="log-placeholder">尚未進行 AI 搜尋，沒有日誌記錄</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clearLog" class="btn-secondary">清除日誌</button>
+        <button id="copyLog" class="btn-primary">複製日誌</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設置面板 -->
+  <div id="settingsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>⚙️ 設定</h2>
+        <button class="modal-close" id="closeSettings">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h3 class="settings-title">🤖 AI 搜尋（Google Gemini）</h3>
+          <div class="settings-description">
+            使用 Google Gemini AI 進行語義搜尋，理解自然語言查詢意圖（例如：「輕鬆的數學課」「適合新手的程式課」）
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <input type="checkbox" id="enableAI">
+              <span>啟用 AI 搜尋</span>
+            </label>
+          </div>
+
+          <div id="aiSettings" style="display: none;">
+            <!-- Gemini 設置 -->
+            <div id="geminiSettings" class="provider-settings">
+              <div class="setting-item">
+                <label class="setting-label-block">
+                  <span>Gemini API Key</span>
+                  <input type="password" id="geminiKey" class="setting-input" placeholder="AIza...">
+                </label>
+              </div>
+
+              <div class="setting-item">
+                <label class="setting-label-block">
+                  <span>AI 模型</span>
+                  <input type="text" id="geminiModel" class="setting-input" value="gemini-2.5-flash" readonly style="background-color: #f5f5f5; cursor: not-allowed;">
+                </label>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                  使用 Gemini 2.5 Flash 模型：配額消耗少、準確度高
+                </div>
+              </div>
+
+              <div class="setting-tip">
+                <strong>💡 如何獲取 Gemini API Key？</strong><br>
+                1. 訪問 <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a><br>
+                2. 點擊「Get API key」建立金鑰<br>
+                3. 每天有免費額度可使用（1500 次請求/天）<br><br>
+                <strong>✨ Gemini 2.5 Flash 優點：</strong><br>
+                • 準確度高：能精確理解課程搜尋意圖<br>
+                • 配額友善：每日免費額度可進行大量搜尋<br>
+                • 自動顯示搜尋時間：完成後即可看到實際花費時間
+              </div>
+            </div>
+
+            <!-- 連接狀態 -->
+            <div class="setting-item">
+              <div id="aiStatus" class="ollama-status">
+                <span class="status-icon">⏳</span>
+                <span class="status-text">未檢測</span>
+              </div>
+              <button id="testAIBtn" class="test-btn">測試連接</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-title">ℹ️ 關於 AI 搜尋</h3>
+          <div class="settings-description">
+            <strong>優點：</strong><br>
+            • 語義理解：「輕鬆的數學課」「適合新手的程式課」<br>
+            • 智能推薦：根據查詢意圖提供相關課程<br>
+            • 快速/精準模式：靈活選擇搜尋深度<br>
+            • 特殊指令：{空堂}、{除了}、{上午}/{下午}/{晚上} 等<br>
+            • 自我學習：查看課程詳情時自動提取中英文關鍵字，越用越聰明<br><br>
+            <strong>注意：</strong><br>
+            • 需要有效的 Gemini API Key<br>
+            • AI 推理需要幾秒鐘時間<br>
+            • 建議使用快速模式進行探索性搜尋<br>
+            • 首次查看課程詳情時需等待 AI 提取關鍵字
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveSettings" class="btn-primary">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="html2canvas.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

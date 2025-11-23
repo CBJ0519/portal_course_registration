@@ -1,18 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "NYCU 課程搜尋助手",
-  "version": "2.0",
-  "description": "NYCU 課程搜尋工具：支援多條件搜尋、智能簡稱識別、書籤管理、課程詳細資訊查詢（評分方式、教學目標等）、選課路徑顯示，資料本地儲存7天",
+  "name": "NYCU 選課助手",
+  "version": "3.0.0",
+  "description": "NYCU 選課助手：支援 AI 智能搜尋、多條件篩選、課程詳細資訊查詢、書籤管理、課表製作與匯出，讓選課更輕鬆！",
   "permissions": [
     "storage",
     "activeTab",
     "sidePanel"
   ],
   "host_permissions": [
-    "https://timetable.nycu.edu.tw/*"
+    "https://timetable.nycu.edu.tw/*",
+    "http://localhost:11434/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "action": {
-    "default_title": "開啟 NYCU 課程搜尋"
+    "default_title": "開啟 NYCU 選課助手"
   },
   "side_panel": {
     "default_path": "popup.html"
