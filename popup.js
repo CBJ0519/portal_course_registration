@@ -5224,6 +5224,111 @@ AI分（0-30分）：
 - paths 設為 optional（匹配會加分，但不匹配也不淘汰）
 - 這樣可以找到所有相關課程，不論它們在哪個學院開課
 
+範例 8（測試課程概述關鍵字提取）：
+輸入：陣列
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["陣列", "array", "linked list", "串列", "資料結構"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：搜尋「陣列」這類專業術語時，課程名稱通常不包含此詞，需要從課程概述中提取的關鍵字（searchKeywords）來匹配。應包含相關術語的變體和同義詞。
+
+範例 9（測試評分方式關鍵字提取）：
+輸入：期中考
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["期中考", "midterm", "midterm exam", "期中", "期中測驗"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：搜尋「期中考」時，需要從評分方式欄位提取的關鍵字來匹配。這類資訊不會出現在課程名稱中，只會出現在課程綱要的評量方式中。
+
+範例 10（測試工具名稱關鍵字提取）：
+輸入：numpy
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["numpy", "pandas", "python", "資料分析", "data analysis"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：搜尋「numpy」這類程式庫/工具名稱時，需要從課程概述或教科書欄位提取的關鍵字來匹配。應包含相關的工具名稱和領域術語。
+
+範例 11（測試先修科目關鍵字提取）：
+輸入：線性代數 先修
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["線性代數", "linear algebra", "線代", "矩陣"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["required", [["先修", "prerequisite", "先備", "前置課程"]]],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：搜尋「XX 先修」時，需要從先修科目/先備能力欄位（存於 memo 或 searchKeywords）提取關鍵字來匹配。name 匹配課程內容，memo 匹配「先修」相關詞。
+
+範例 12（測試教學方法關鍵字提取）：
+輸入：翻轉教學
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["翻轉教學", "flipped classroom", "實作", "分組", "專題", "project-based", "hands-on"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：搜尋「翻轉教學」這類教學方法時，需要從教學方法欄位提取的關鍵字來匹配。應包含相關的教學方式和互動形式術語。
+
 現在為此查詢生成關鍵字集合：${userQuery}
 
 只輸出 JSON：`;
