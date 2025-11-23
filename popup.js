@@ -1761,14 +1761,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
 
-      // 只在未完成提取時顯示（已全部完成時隱藏）
+      // 根據完成狀態顯示不同樣式
+      let statusText, statusClass;
       if (extractedCount === totalCourses) {
-        keywordStatusDiv.style.display = 'none';
-        return;
+        // 已完成 - 顯示綠色
+        statusText = `✅ 已完成 ${totalCourses} 門課程的關鍵字提取`;
+        statusClass = 'status-fresh';
+      } else {
+        // 進行中 - 顯示橘色
+        statusText = `📊 已提取 ${extractedCount}/${totalCourses} 門課程的關鍵字`;
+        statusClass = 'status-warning';
       }
 
-      const statusText = `📊 已提取 ${extractedCount}/${totalCourses} 門課程的關鍵字`;
-      keywordStatusDiv.innerHTML = `<span class="status-warning">${statusText}</span>`;
+      keywordStatusDiv.innerHTML = `<span class="${statusClass}">${statusText}</span>`;
       keywordStatusDiv.style.display = 'block';
     });
   }
