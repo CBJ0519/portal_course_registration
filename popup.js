@@ -7014,8 +7014,8 @@ ${outlineContent}
     const coursesToProcess = courses.filter(course => {
       const courseKey = getCourseKey(course);
       const cached = courseDetailsCache[courseKey];
-      // 如果沒有緩存，或者沒有 searchKeywords 屬性，則需要處理
-      return !cached || !cached.searchKeywords;
+      // 如果沒有緩存，或者沒有 searchKeywords 屬性（使用 hasOwnProperty 檢查，即使是空字串也算已提取）
+      return !cached || !cached.hasOwnProperty('searchKeywords');
     });
 
     if (coursesToProcess.length === 0) {
@@ -7251,8 +7251,8 @@ ${outlineContent}
     const coursesToProcess = allCourses.filter(course => {
       const courseKey = getCourseKey(course);
       const cached = courseDetailsCache[courseKey];
-      // 如果沒有緩存，或者沒有 searchKeywords 屬性，則需要處理
-      return !cached || !cached.searchKeywords;
+      // 如果沒有緩存，或者沒有 searchKeywords 屬性（使用 hasOwnProperty 檢查，即使是空字串也算已提取）
+      return !cached || !cached.hasOwnProperty('searchKeywords');
     });
 
     if (coursesToProcess.length === 0) {
