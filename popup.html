@@ -459,6 +459,56 @@
               <li>技術術語搜尋：搜尋「pandas」「numpy」可找到相關 Python 課程</li>
             </ul>
 
+            <p><strong>🧪 測試關鍵字提取（驗證學習效果）：</strong></p>
+            <ul>
+              <li><strong>「陣列」或「linked list」</strong>
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>測試：從課程概述提取資料結構術語</li>
+                  <li>預期：找到「資料結構」「演算法」等課程</li>
+                  <li>驗證：這些詞通常不在課程名稱中，只在綱要中</li>
+                </ul>
+              </li>
+              <li><strong>「期中考」或「midterm exam」</strong>
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>測試：從評量方式欄位提取關鍵字</li>
+                  <li>預期：找到大部分有期中考的課程</li>
+                  <li>驗證：評量方式是綱要的一部分</li>
+                </ul>
+              </li>
+              <li><strong>「numpy」或「pandas」</strong>
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>測試：提取 Python 相關工具名稱（專有名詞）</li>
+                  <li>預期：找到 Python 數據分析相關課程</li>
+                  <li>驗證：工具名稱通常在教科書或概述中</li>
+                </ul>
+              </li>
+              <li><strong>「線性代數」或「微積分」（作為先修科目）</strong>
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>測試：從先修科目欄位提取關鍵字</li>
+                  <li>預期：找到需要數學基礎的進階課程</li>
+                  <li>驗證：「機器學習」「訊號處理」等課程</li>
+                </ul>
+              </li>
+              <li><strong>「翻轉教學」或「實作」或「分組專題」</strong>
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>測試：從教學方法/評量方式提取關鍵字</li>
+                  <li>預期：找到採用特定教學方式的課程</li>
+                  <li>驗證：這些詞彙在教學方法欄位中</li>
+                </ul>
+              </li>
+            </ul>
+
+            <div class="help-tip">
+              <strong>✅ 成功標誌</strong><br>
+              • 搜尋結果出現課程名稱<strong>不包含</strong>該關鍵字的課程<br>
+              • 點擊「查看完整資訊」，在綱要中可找到該關鍵字<br>
+              • Console 看到 <code>✅ [課程名稱] 關鍵字提取成功</code><br><br>
+              <strong>❌ 失敗標誌</strong><br>
+              • 搜尋專業術語完全找不到相關課程<br>
+              • 只找到課程名稱包含該詞的課程<br>
+              • Console 大量 <code>⚠️ 無有效課程綱要內容</code>
+            </div>
+
             <div class="help-tip">
               <strong>⚡ 提示</strong><br>
               • 功能需要啟用 AI 才能使用（設定 → 啟用 AI 搜尋）<br>
