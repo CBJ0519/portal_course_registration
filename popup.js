@@ -387,6 +387,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const resultsDiv = document.getElementById('results');
   const loadingDiv = document.getElementById('loading');
   const dataStatusDiv = document.getElementById('dataStatus');
+  const keywordStatusDiv = document.getElementById('keywordStatus');
 
   // 分頁相關元素
   const searchTab = document.getElementById('searchTab');
@@ -470,6 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 顯示資料狀態
   updateDataStatus();
+  updateKeywordExtractionStatus();
 
   // 初始化篩選器選項
   initializeFiltersOnLoad();
@@ -1735,6 +1737,39 @@ document.addEventListener('DOMContentLoaded', function() {
           proactiveExtractKeywords(result.courseData);
         }, 1000);
       }
+    });
+  }
+
+  // 更新關鍵字提取狀態顯示
+  function updateKeywordExtractionStatus() {
+    chrome.storage.local.get(['courseData', 'courseDetailsCache'], function(result) {
+      if (!result.courseData || result.courseData.length === 0) {
+        keywordStatusDiv.style.display = 'none';
+        return;
+      }
+
+      const totalCourses = result.courseData.length;
+      const cache = result.courseDetailsCache || {};
+
+      // 計算已提取關鍵字的課程數量
+      let extractedCount = 0;
+      for (const course of result.courseData) {
+        const courseKey = getCourseKey(course);
+        const cached = cache[courseKey];
+        if (cached && cached.searchKeywords) {
+          extractedCount++;
+        }
+      }
+
+      // 只在未完成提取時顯示（已全部完成時隱藏）
+      if (extractedCount === totalCourses) {
+        keywordStatusDiv.style.display = 'none';
+        return;
+      }
+
+      const statusText = `📊 已提取 ${extractedCount}/${totalCourses} 門課程的關鍵字`;
+      keywordStatusDiv.innerHTML = `<span class="status-warning">${statusText}</span>`;
+      keywordStatusDiv.style.display = 'block';
     });
   }
 
@@ -7148,6 +7183,7 @@ ${outlineContent}
       // 💾 批次保存：每處理完一批就保存一次
       saveCourseDetailsCache();
       console.log(`💾 已保存批次進度：${processed}/${coursesToProcess.length}`);
+      updateKeywordExtractionStatus();
 
       // 更新進度
       const progress = Math.floor((processed / coursesToProcess.length) * 100);
@@ -7163,6 +7199,7 @@ ${outlineContent}
     // 完成 - 最後保存一次確保所有進度都被保存
     saveCourseDetailsCache();
     console.log(`💾 最終保存完成：${processed}/${coursesToProcess.length}`);
+    updateKeywordExtractionStatus();
 
     autoLearningInProgress = false;
     if (autoLearningCancelled) {
@@ -7412,6 +7449,7 @@ ${outlineContent}
       // 💾 批次保存：每處理完一批就保存一次
       saveCourseDetailsCache();
       console.log(`💾 已保存批次進度：${processed}/${totalCount}`);
+      updateKeywordExtractionStatus();
 
       // 🎨 更新 UI 進度
       if (learningProgress) {
@@ -7435,6 +7473,7 @@ ${outlineContent}
     // 完成 - 最後保存一次確保所有進度都被保存
     saveCourseDetailsCache();
     console.log(`💾 最終保存完成：${processed}/${totalCount}`);
+    updateKeywordExtractionStatus();
 
     const wasStopped = !proactiveExtractionInProgress;
     proactiveExtractionInProgress = false;
