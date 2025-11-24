@@ -95,8 +95,11 @@
     </div>
 
     <!-- 特殊指令快捷按鈕 -->
-    <div id="specialCommandsBar" class="special-commands-bar" style="display: none;">
-      <div class="special-commands-title">🎯 特殊指令（需啟用 AI）：</div>
+    <div id="specialCommandsBar" class="special-commands-container" style="display: none;">
+      <div class="special-commands-header" id="specialCommandsHeader">
+        <span class="special-commands-title">🎯 特殊指令（需啟用 AI）</span>
+      </div>
+      <div class="special-commands-sections" id="specialCommandsSections">
       <div class="special-commands-buttons">
         <button class="special-cmd-btn" data-command="{空堂}" title="插入 {空堂} 指令 - 查詢我的空堂時間的課程">
           <span class="cmd-icon">📋</span>
@@ -138,6 +141,7 @@
           <span class="cmd-icon">3️⃣</span>
           <span class="cmd-text">{高學分}</span>
         </button>
+      </div>
       </div>
     </div>
 

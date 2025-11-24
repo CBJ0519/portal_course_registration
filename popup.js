@@ -1539,7 +1539,22 @@ document.addEventListener('DOMContentLoaded', function() {
               ${score !== null ? `<div style="height: 36px; padding: 0 10px; margin-right: 16px; margin-bottom: 8px; ${scoreBadgeStyle} color: white; border-radius: 12px; font-size: 10px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
                 <span style="font-weight: bold; font-size: 10px;">${scoreLabel}</span>
                 <span style="font-weight: bold; font-size: 11px;">🎯${score}/100</span>
-                <span style="opacity: 0.85; font-size: 9px;">AI${scoreData.ai}/30 時間${scoreData.time}/30 路徑${scoreData.path}/20 匹配${scoreData.match}/20</span>
+                <div style="opacity: 0.85; font-size: 9px; display: flex; flex-direction: column; line-height: 1.3;">
+                  <div style="display: flex; gap: 6px;">
+                    <span style="width: 30px; text-align: center;">內容</span>
+                    <span style="width: 30px; text-align: center;">時間</span>
+                    <span style="width: 30px; text-align: center;">地點</span>
+                    <span style="width: 30px; text-align: center;">路徑</span>
+                    <span style="width: 30px; text-align: center;">匹配</span>
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <span style="width: 30px; text-align: center;">${scoreData.content}/25</span>
+                    <span style="width: 30px; text-align: center;">${scoreData.time}/25</span>
+                    <span style="width: 30px; text-align: center;">${scoreData.location}/15</span>
+                    <span style="width: 30px; text-align: center;">${scoreData.path}/15</span>
+                    <span style="width: 30px; text-align: center;">${scoreData.recommend}/20</span>
+                  </div>
+                </div>
               </div>` : ''}
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
@@ -3942,7 +3957,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 特殊指令相關元素
   const specialCommandsBar = document.getElementById('specialCommandsBar');
+  const specialCommandsHeader = document.getElementById('specialCommandsHeader');
+  const specialCommandsSections = document.getElementById('specialCommandsSections');
   const specialCmdButtons = document.querySelectorAll('.special-cmd-btn');
+
+  // 特殊指令收合狀態（預設收起）
+  let specialCommandsCollapsed = true;
+  if (specialCommandsSections) {
+    specialCommandsSections.classList.add('collapsed');
+  }
 
   // AI 計時器
   let aiTimerInterval = null;
@@ -4145,7 +4168,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // 清除關鍵字快取按鈕事件
   const clearKeywordCacheBtn = document.getElementById('clearKeywordCache');
   clearKeywordCacheBtn.addEventListener('click', () => {
-    if (!confirm('確定要清除所有關鍵字快取嗎？\n\n這將清除所有已提取的關鍵字，並在下次啟動時重新提取。\n（課程基本資料不會被清除）')) {
+    if (!confirm('確定要清除所有關鍵字快取嗎？\n\n這將清除所有已提取的關鍵字，並立即重新開始提取。\n（課程基本資料不會被清除）')) {
       return;
     }
 
@@ -4160,10 +4183,23 @@ document.addEventListener('DOMContentLoaded', function() {
       cacheLastUpdate: 0  // 重置時間戳，強制重新提取
     }, () => {
       console.log('✅ 關鍵字快取已清除');
-      alert('關鍵字快取已清除！\n\n請重新載入擴充功能，系統將自動重新提取所有課程的關鍵字。');
 
       // 更新狀態顯示
       updateKeywordExtractionStatus();
+
+      // 自動重新開始提取（如果有課程資料且 AI 已啟用）
+      chrome.storage.local.get(['courseData'], (result) => {
+        if (result.courseData && result.courseData.length > 0 && aiEnabled) {
+          alert('關鍵字快取已清除！\n\n系統將自動重新提取所有課程的關鍵字。');
+          console.log('🚀 自動重新開始提取課程關鍵字...');
+          // 延遲 500ms 後開始提取（讓 alert 先關閉）
+          setTimeout(() => {
+            proactiveExtractKeywords(result.courseData);
+          }, 500);
+        } else {
+          alert('關鍵字快取已清除！\n\n請確保有課程資料且 AI 已啟用後，系統將自動提取關鍵字。');
+        }
+      });
     });
   });
 
@@ -4264,6 +4300,25 @@ document.addEventListener('DOMContentLoaded', function() {
     testAIBtn.disabled = false;
     testAIBtn.textContent = '測試連接';
   });
+
+  // 特殊指令收合/展開
+  function toggleSpecialCommandsPanel() {
+    if (!specialCommandsSections) return; // 安全檢查
+
+    specialCommandsCollapsed = !specialCommandsCollapsed;
+    if (specialCommandsCollapsed) {
+      specialCommandsSections.classList.add('collapsed');
+    } else {
+      specialCommandsSections.classList.remove('collapsed');
+    }
+  }
+
+  // 點擊標題收合/展開特殊指令
+  if (specialCommandsHeader && specialCommandsSections) {
+    specialCommandsHeader.addEventListener('click', function(e) {
+      toggleSpecialCommandsPanel();
+    });
+  }
 
   // 特殊指令按鈕事件 - 點擊插入指令到搜尋框
   specialCmdButtons.forEach(btn => {
@@ -4830,7 +4885,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Step 3：獨立評分函數
-  async function scoreCourses(courses, userQuery, attributeSets, aiMode) {
+  async function scoreCourses(courses, userQuery, attributeSets, aiMode, instructions = { excludeKeywords: [] }) {
     if (!courses || courses.length === 0) {
       return new Map();
     }
@@ -4866,7 +4921,7 @@ document.addEventListener('DOMContentLoaded', function() {
           c.dep_name ? `系所:${c.dep_name}` : '',
           pathsText ? `路徑:${pathsText}` : '',
           c.cos_type || '',
-          c.credits ? `${c.credits}學分` : '',
+          typeof c.credits === 'number' ? `${c.credits}學分` : '',
           c.code || '',
           c.memo || '',
           keywords ? `關鍵字:${keywords}` : ''
@@ -4893,6 +4948,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 【用戶查詢】：${userQuery}
 
+【排除條件（Exclude）】：
+${instructions.excludeKeywords.length > 0 ? instructions.excludeKeywords.map(kw => `❌ 排除：${kw}`).join('\n') : '無'}
+${instructions.excludeKeywords.length > 0 ? '**重要**：如果課程的任何屬性（課程名稱、教師、系所、教室、時間等）包含排除條件，必須給予 0 分（內容分=0, 時間分=0, 地點分=0, 路徑分=0, 匹配分=0）' : ''}
+
 【必要條件（Required）】：
 ${requiredAttrs.length > 0 ? requiredAttrs.map(([k, [req, kw]]) => `${k}: ${formatKeywords(kw)}`).join('\n') : '無'}
 
@@ -4907,106 +4966,159 @@ ${courseList}
 - 「關鍵字」欄位：包含從完整課程綱要（先修科目、課程概述、教科書、評量方式、教學方法、備註）中提取的重要關鍵字
 - 如果課程有「關鍵字」欄位，請優先使用該欄位來理解課程的詳細內容（如評分方式、先修要求、教學形式等）
 
-評分標準：
-總分 = AI分(0-30) + 時間匹配分(0-30) + 路徑/系所匹配分(0-20) + 匹配度加分(0-20)
+評分標準（五分類）：
+總分 = 內容分(0-25) + 時間分(0-25) + 地點分(0-15) + 路徑分(0-15) + 匹配分(0-20)
 **最高分 100 分**
 
 **重要原則：如果用戶沒有指定某個屬性（該屬性不在 Required 和 Optional 中），則該屬性給滿分**
 
-AI分（0-30分）：
-根據課程與查詢的整體匹配度、課程品質、實用性、推薦程度等因素綜合評估。
-**特別注意**：如果課程有「關鍵字」欄位，請深入分析其中的評量方式、先修科目、教學方法等資訊：
-- 30分：完美匹配，課程品質極高，強烈推薦
-- 25-29分：高度匹配，課程品質優秀，非常推薦
-- 20-24分：良好匹配，課程品質良好，推薦
-- 15-19分：中等匹配，課程品質中等
-- 10-14分：一般匹配，課程品質一般
-- 5-9分：勉強匹配，課程品質較低
-- 0-4分：不太匹配，不推薦
+1. 內容分（0-25分）：課程名稱、關鍵字內容匹配度
+- **如果用戶沒有指定 name 條件**（name 不在上述條件中）：給滿分 25 分
+- 課程名稱完全匹配查詢：25 分
+- 課程名稱高度相關：20-24 分
+- 關鍵字欄位高度相關：18-22 分
+- 課程內容部分相關：12-17 分
+- 勉強相關：5-11 分
+- 不相關：0-4 分
+**特別注意**：如果課程有「關鍵字」欄位，請分析其中的評量方式、先修科目、教學方法等資訊
+**【重要】百分比精確匹配規則**：
+  * 如果用戶查詢包含具體百分比（如「期中考30%」「報告占60%」），必須精確匹配該百分比數字
+  * 範例：查詢「期中考30%」時，課程關鍵字有「期中考 40%」→ 不匹配，內容分給 0-5 分
+  * 範例：查詢「期中考30%」時，課程關鍵字有「期中考 30%」→ 精確匹配，內容分給 20-25 分
+  * 如果用戶只查詢「期中考」（沒有百分比），則任何有期中考的課程都匹配（不論百分比）
 
-時間匹配分（0-30分）：
-- **如果用戶沒有指定時間條件**（time 不在上述條件中）：給滿分 30 分
-- 精確匹配時間（如查詢 T34，課程是 T34）：30 分
-- 時間完全包含（如查詢 T1234n，課程是 T234）：28 分
-- 時間部分重疊：20-25 分
+2. 時間分（0-25分）：上課時間匹配度
+- **如果用戶沒有指定時間條件**（time 不在上述條件中）：給滿分 25 分
+- 精確匹配時間（如查詢 T34，課程是 T34）：25 分
+- 時間完全包含（如查詢 T1234n，課程是 T234）：23 分
+- 時間部分重疊：15-20 分
+- 時間不重疊但同一天：5-10 分
+- 完全不匹配：0-4 分
 
-路徑/系所匹配分（0-20分）：
-- **如果用戶沒有指定路徑/系所條件**（paths 和 dep_name 都不在上述條件中）：給滿分 20 分
-- paths 精確匹配查詢的學院/系所（如法律學院、管理學院、資工、電機等）：20 分
-- dep_name 精確匹配查詢的系所名稱：18 分
-- paths 部分匹配（如含「通識」、「核心課程」）：15 分
-- paths 勉強匹配（如含「學士班共同課程」、「校共同課程」）：10 分
-- 完全不匹配：0 分
+3. 地點分（0-15分）：校區/教室匹配度
+- **如果用戶沒有指定 room 條件**（room 不在上述條件中）：給滿分 15 分
+- 精確匹配教室/校區：15 分
+- 匹配校區但教室不同：12-14 分
+- 未顯示校區/教室（空白）：8-10 分
+- 不匹配：0-5 分
+**校區排除規則**（當查詢包含排除條件如「不在光復校區」時）：
+  * 有明確非排除校區資訊的課程（如六家校區、博愛校區）：12-15 分
+  * 未顯示校區資訊的課程（教室欄位為空）：6-8 分
+  * 範例：查詢「不在光復校區」時，「六家校區」課程 > 「未顯示校區」課程
 
-匹配度加分（由 AI 自行判斷 0-20 分）：
-- **如果用戶沒有指定 name 條件**（name 不在上述條件中）：給滿分 20 分
-- 完全符合用戶意圖（如查詢「法律相關」，課程是「法律專業倫理」）：+15~20 分
-- 高度相關（如查詢「管理相關」，課程是「生產與作業管理」）：+10~14 分
-- 部分相關：+5~9 分
-- 勉強相關：+0~4 分
+4. 路徑分（0-15分）：系所/學院/選課路徑匹配度
+- **如果用戶沒有指定路徑/系所條件**（paths 和 dep_name 都不在上述條件中）：給滿分 15 分
+- paths 精確匹配查詢的學院/系所（如法律學院、資工系、電機系）：15 分
+- dep_name 精確匹配查詢的系所名稱：13-14 分
+- paths 部分匹配（如含「通識」、「核心課程」）：10-12 分
+- paths 勉強匹配（如含「學士班共同課程」、「校共同課程」）：5-9 分
+- 完全不匹配：0-4 分
+
+5. 匹配分（0-20分）：課程符合條件的綜合匹配度
+- **【核心原則】匹配分 = 課程符合用戶查詢條件的整體程度**
+- **不要主觀評價課程名氣、品質或吸引力**，只評估課程是否符合用戶提出的條件
+- **評分邏輯**（根據前面各項分數的匹配程度）：
+  * 18-20分：**所有項目都接近滿分**（內容≥23, 時間≥23, 地點≥13, 路徑≥13）= 完美匹配所有條件
+  * 15-17分：**大部分項目高分**（內容≥20, 時間≥20, 地點≥10, 路徑≥10）= 符合所有 Required 條件
+  * 12-14分：**部分項目高分**（至少 2-3 項達到高分）= 符合所有 Required 條件但有些屬性匹配度一般
+  * 9-11分：**少數項目高分**（只有 1-2 項達到高分）= 勉強符合 Required 條件
+  * 6-8分：**各項分數都偏低** = Required 條件符合度不足
+  * 3-5分：**多數項目低分** = Required 條件大部分不符合
+  * 0-2分：**所有項目都低分** = 基本不符合條件
+- **評分提示**：
+  * 如果內容分、時間分、地點分、路徑分都是滿分或接近滿分，匹配分應給 18-20 分
+  * 如果只有 1-2 項滿分，其他項也較高（如 20+），匹配分應給 15-17 分
+- **【重要】課程類型降分規則**：以下類型課程必須限制匹配分上限：
+  * **零學分課程（顯示為"0學分"）：匹配分不得超過 8 分**
+  * 實習課（課程名稱包含「實習」）：匹配分不得超過 10 分
+  * 專題課（課程名稱包含「專題」）：匹配分不得超過 10 分
+  * 服務學習課（課程名稱包含「服務學習」）：匹配分不得超過 8 分
+  * 無時間資訊課程（時間欄位為空）：匹配分不得超過 12 分
+- **範例說明**：
+  * 查詢「期末考30%的資工課」，課程「資料結構與物件導向程式設計」有「final written exam 30%」且路徑包含資工系
+    → 完全符合所有條件，匹配分應給 16-20 分
+  * 查詢「星期二上午的課」，課程時間是 T34（星期二3-4節）
+    → 完全符合條件，匹配分應給 16-20 分
 
 範例 1：
-查詢「星期二上午的課程」（只指定 time，沒有指定 paths 和 name）
-- AI分：根據課程品質與推薦程度 0-30 分
-- 時間匹配分：根據實際時間匹配程度 0-30 分
-- 路徑/系所匹配分：滿分 20 分（因為用戶沒有指定）
-- 匹配度加分：滿分 20 分（因為用戶沒有指定課程名稱）
-- 可能得分：30+30+20+20 = 100 分
+查詢「星期二上午的課程」（只指定 time，沒有指定其他條件）
+- 內容分：滿分 25 分（因為用戶沒有指定課程內容）
+- 時間分：根據實際時間匹配程度 0-25 分
+- 地點分：滿分 15 分（因為用戶沒有指定地點）
+- 路徑分：滿分 15 分（因為用戶沒有指定路徑）
+- 匹配分：根據整體條件匹配度 0-20 分
+- 可能得分：25+25+15+15+20 = 100 分
 
 範例 2：
 查詢「推薦不用考試的通識課」
-- 課程A：關鍵字包含「期中考,期末考,筆試」→ AI分較低（5-10分）
-- 課程B：關鍵字包含「報告,實作,專題,無考試」→ AI分較高（25-30分）
+- 課程A：關鍵字包含「期中考,期末考,筆試」→ 內容分較低（5-10分）
+- 課程B：關鍵字包含「報告,實作,專題,無考試」→ 內容分較高（20-25分）
 - 通過「關鍵字」欄位中的評量方式資訊來判斷是否符合「不用考試」的需求
 
 範例 3：
 查詢「找不需要微積分基礎的課程」
-- 課程A：關鍵字包含「微積分,線性代數,先修」→ AI分較低（0-5分）
-- 課程B：關鍵字包含「無先修要求」或沒有提及微積分 → AI分較高（25-30分）
+- 課程A：關鍵字包含「微積分,線性代數,先修」→ 內容分較低（0-5分）
+- 課程B：關鍵字包含「無先修要求」或沒有提及微積分 → 內容分較高（20-25分）
 - 通過「關鍵字」欄位中的先修科目資訊來判斷
 
+範例 4：
+查詢「體育課」
+- 課程A：「大一體育｜余秀菁｜F78｜PE[GF]｜0學分｜...」→ 因為是 0 學分，匹配分不得超過 8 分（例如給 6 分）
+- 課程B：「體育專題｜...｜2學分｜...」→ 因為包含「專題」，匹配分不得超過 10 分
+- 課程C：「運動與健康｜...｜2學分｜...」→ 一般課程，匹配分可達 14-20 分
+
+範例 5：
+查詢「期中考占比30%的資工課」
+- 課程A：「...｜關鍵字:期中考 30%,期末考 40%,...」→ 百分比精確匹配，內容分 20-25 分
+- 課程B：「...｜關鍵字:期中考 40%,期末考 40%,...」→ 百分比不匹配（40% ≠ 30%），內容分 0-5 分
+- 課程C：「...｜關鍵字:報告 60%,作業 40%,...」→ 沒有期中考，內容分 0-3 分
+**重要**：必須精確匹配百分比數字，40% 和 30% 不是同一個值，不能視為匹配
+
 輸出格式：
-- 格式：編號:總分:AI分:時間分:路徑分:匹配度分
+- 格式：編號:總分:內容分:時間分:地點分:路徑分:匹配分
 - 每行一個課程，各項分數用冒號分隔
 - 結果必須按總分從高到低排序
 - 範例：
-  2:100:30:30:20:20
-  3:95:25:28:20:17
-  1:92:28:30:15:15
+  2:100:25:25:15:15:20
+  3:95:23:23:14:15:20
+  1:90:25:20:10:15:20
 - 不要輸出任何解釋、分析或額外文字
-- 確保所有分數都在合理範圍內（AI分0-30，時間0-30，路徑0-20，匹配度0-20）`;
+- 確保所有分數都在合理範圍內（內容分0-25，時間分0-25，地點分0-15，路徑分0-15，匹配分0-20）`;
 
       const response = await callAIForKeywordGeneration(prompt, 0.1, 0);  // thinking=0（評分不需要思考，快速計算）
 
-      // 解析編號和分數（格式：編號:總分:AI分:時間分:路徑分:匹配度分）
-      const matches = response.matchAll(/(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)/g);
+      // 解析編號和分數（格式：編號:總分:內容分:時間分:地點分:路徑分:匹配分）
+      const matches = response.matchAll(/(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)/g);
       const results = new Map();
       for (const match of matches) {
         const courseNum = parseInt(match[1]);
-        const aiTotalScore = parseInt(match[2]); // AI 返回的總分（可能有誤）
-        let aiScore = parseInt(match[3]);        // AI 綜合評估分
-        let timeScore = parseInt(match[4]);
-        let pathScore = parseInt(match[5]);
-        let matchScore = parseInt(match[6]);
+        const aiTotalScore = parseInt(match[2]);     // AI 返回的總分（可能有誤）
+        let contentScore = parseInt(match[3]);       // 內容分（課程名稱、關鍵字）
+        let timeScore = parseInt(match[4]);          // 時間分
+        let locationScore = parseInt(match[5]);      // 地點分（校區/教室）
+        let pathScore = parseInt(match[6]);          // 路徑分（系所/學院）
+        let recommendScore = parseInt(match[7]);     // 匹配分（課程條件匹配度）
 
         // 範圍檢查和修正（防止 AI 給出超範圍的分數）
-        aiScore = Math.min(30, Math.max(0, aiScore));         // 限制在 0-30
-        timeScore = Math.min(30, Math.max(0, timeScore));     // 限制在 0-30
-        pathScore = Math.min(20, Math.max(0, pathScore));     // 限制在 0-20
-        matchScore = Math.min(20, Math.max(0, matchScore));   // 限制在 0-20
+        contentScore = Math.min(25, Math.max(0, contentScore));       // 限制在 0-25
+        timeScore = Math.min(25, Math.max(0, timeScore));            // 限制在 0-25
+        locationScore = Math.min(15, Math.max(0, locationScore));    // 限制在 0-15
+        pathScore = Math.min(15, Math.max(0, pathScore));            // 限制在 0-15
+        recommendScore = Math.min(20, Math.max(0, recommendScore));  // 限制在 0-20
 
-        // 重新計算總分以確保正確：總分 = AI分 + 時間分 + 路徑分 + 匹配度分
-        const calculatedTotal = aiScore + timeScore + pathScore + matchScore;
+        // 重新計算總分以確保正確：總分 = 內容分 + 時間分 + 地點分 + 路徑分 + 匹配分
+        const calculatedTotal = contentScore + timeScore + locationScore + pathScore + recommendScore;
 
         if (courseNum >= 1 && courseNum <= chunk.length) {
           const course = chunk[courseNum - 1];
           const id = course.cos_id || course.code;
           results.set(id, {
-            total: calculatedTotal,  // 使用重新計算的總分
-            ai: aiScore,      // AI 綜合評估分（0-30分）
-            time: timeScore,
-            path: pathScore,
-            match: matchScore
+            total: calculatedTotal,       // 使用重新計算的總分
+            content: contentScore,        // 內容分（0-25分）
+            time: timeScore,              // 時間分（0-25分）
+            location: locationScore,      // 地點分（0-15分）
+            path: pathScore,              // 路徑分（0-15分）
+            recommend: recommendScore     // 匹配分（0-20分）
           });
         }
       }
@@ -5028,6 +5140,119 @@ AI分（0-30分）：
     return finalScoreMap;
   }
 
+  // 提取用戶查詢中的百分比要求（用於精確百分比匹配過濾）
+  // 返回格式：[{ synonyms: ["期末考", "final exam", ...], percentage: 30 }, ...]
+  function extractPercentageRequirements(attributeSets) {
+    const requirements = [];
+
+    // 從 evaluation 屬性提取百分比要求
+    if (!attributeSets.evaluation || attributeSets.evaluation[0] === 'none') {
+      return requirements;
+    }
+
+    const evaluationGroups = attributeSets.evaluation[1];
+
+    // 每個 group 是一組同義詞（OR 關係）
+    for (const group of evaluationGroups) {
+      const synonymsForSamePercentage = [];
+      let targetPercentage = null;
+
+      for (const keyword of group) {
+        // 匹配 "XXX ##%" 格式（如 "期末考 30%", "final exam 30%"）
+        const match = keyword.match(/^(.+?)\s+(\d+)%$/);
+        if (match) {
+          const evalMethod = match[1].trim().toLowerCase();
+          const percentage = parseInt(match[2]);
+
+          synonymsForSamePercentage.push(evalMethod);
+
+          // 記錄百分比（同一組內應該都是相同的百分比）
+          if (targetPercentage === null) {
+            targetPercentage = percentage;
+          } else if (targetPercentage !== percentage) {
+            console.warn(`⚠️ 同一組內發現不同百分比: ${targetPercentage}% vs ${percentage}%`);
+          }
+        }
+      }
+
+      // 如果這個組有百分比要求，添加到 requirements
+      if (synonymsForSamePercentage.length > 0 && targetPercentage !== null) {
+        requirements.push({
+          synonyms: synonymsForSamePercentage,
+          percentage: targetPercentage,
+          originalKeywords: group.filter(k => k.match(/^(.+?)\s+(\d+)%$/))
+        });
+      }
+    }
+
+    return requirements;
+  }
+
+  // 檢查課程是否應該因為百分比問題被淘汰（返回 true 表示應該淘汰此課程）
+  // requirements 格式：[{ synonyms: ["期末考", "final exam", ...], percentage: 30 }, ...]
+  function hasMismatchedPercentage(course, requirements) {
+    if (requirements.length === 0) return false;
+
+    const courseKeywords = (course.extractedKeywords || '').toLowerCase();
+
+    // 如果課程沒有提取關鍵字，無法判斷是否符合百分比要求，應淘汰（因為 evaluation 是 required）
+    if (!courseKeywords) {
+      console.log(`    └─ 淘汰：課程 ${course.name} 沒有關鍵字（無法驗證百分比）`);
+      return true;
+    }
+
+    // 對於每個 requirement（每個 requirement 包含一組同義詞和目標百分比）
+    for (const req of requirements) {
+      let foundMatchInAnySynonym = false;  // 是否在任一同義詞中找到正確百分比
+      let foundMismatchInAnySynonym = false;  // 是否在任一同義詞中找到錯誤百分比
+
+      // 遍歷這組同義詞中的每一個（OR 邏輯）
+      for (const synonym of req.synonyms) {
+        // 允許同義詞內部和百分比之間有其他詞（如 "final written exam 30%"）
+        // 策略：同義詞後面可以有0-2個額外的詞，然後是百分比
+        const escapedSynonym = synonym
+          .split(/\s+/)
+          .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('(?:\\s+\\w+)?\\s+');
+
+        // 允許同義詞後面有0-2個額外的詞（如 "exam"、"written exam"）
+        const regex = new RegExp(`${escapedSynonym}(?:\\s+\\w+){0,2}?\\s+(\\d+)%`, 'gi');
+
+        let match;
+        while ((match = regex.exec(courseKeywords)) !== null) {
+          const foundPercentage = parseInt(match[1]);
+
+          if (foundPercentage === req.percentage) {
+            // 在這個同義詞中找到正確百分比
+            foundMatchInAnySynonym = true;
+            console.log(`    ✓ 找到匹配：課程有「${match[0]}」，符合要求 ${req.percentage}%`);
+          } else {
+            // 在這個同義詞中找到錯誤百分比
+            foundMismatchInAnySynonym = true;
+            console.log(`    ✗ 發現不匹配：課程有「${match[0]}」，要求 ${req.percentage}%`);
+          }
+        }
+      }
+
+      // 判斷邏輯：
+      // 1. 如果在任一同義詞中找到錯誤百分比 → 淘汰
+      // 2. 如果沒有在任何同義詞中找到匹配 → 淘汰
+      if (foundMismatchInAnySynonym) {
+        console.log(`    └─ 淘汰：課程的評量方式百分比與要求不符`);
+        return true;
+      }
+
+      if (!foundMatchInAnySynonym) {
+        console.log(`    └─ 淘汰：課程沒有符合要求的評量方式（需要 ${req.percentage}%）`);
+        console.log(`       查找的同義詞: ${req.synonyms.join(', ')}`);
+        return true;
+      }
+    }
+
+    // 所有要求都在某個同義詞中找到精確匹配 → 保留
+    return false;
+  }
+
   // 使用 AI 直接篩選課程
   async function searchCoursesWithAI(userQuery, allCourses) {
     if (!aiEnabled || !aiSearchToggle.classList.contains('active')) {
@@ -5047,6 +5272,46 @@ AI分（0-30分）：
 
       console.log('🤖 開始 AI 搜尋:', userQuery);
       console.log('🤖 課程總數:', allCourses.length);
+
+      // 附加關鍵字到課程對象（從快取讀取）
+      let attachedCount = 0;
+      let missingCount = 0;
+      let emptyKeywordCount = 0;
+
+      allCourses.forEach(course => {
+        const cacheKey = course.cos_id || course.code;
+        if (cacheKey && courseDetailsCache[cacheKey]) {
+          // 修正：快取中的屬性名稱是 searchKeywords，而不是 keywords
+          if (courseDetailsCache[cacheKey].searchKeywords) {
+            course.extractedKeywords = courseDetailsCache[cacheKey].searchKeywords;
+            attachedCount++;
+          } else {
+            emptyKeywordCount++;
+          }
+        } else {
+          missingCount++;
+        }
+      });
+
+      console.log(`✅ 關鍵字附加結果: ${attachedCount} 門成功, ${emptyKeywordCount} 門關鍵字為空, ${missingCount} 門不在快取中`);
+
+      // 檢查快取中實際有多少課程有關鍵字
+      const cacheCoursesWithKeywords = Object.values(courseDetailsCache).filter(c => c && c.searchKeywords && c.searchKeywords.length > 0).length;
+      console.log(`📊 快取統計: 總共 ${Object.keys(courseDetailsCache).length} 門課程, 其中 ${cacheCoursesWithKeywords} 門有關鍵字`);
+
+      // 調試：顯示快取結構示例（成功附加關鍵字的課程）
+      if (attachedCount > 0) {
+        console.log('\n🔍 成功附加關鍵字的課程示例（前3門）:');
+        let shown = 0;
+        for (const course of allCourses) {
+          if (course.extractedKeywords && shown < 3) {
+            console.log(`  課程: ${course.name}`);
+            console.log(`    關鍵字長度: ${course.extractedKeywords.length}`);
+            console.log(`    關鍵字預覽: ${course.extractedKeywords.substring(0, 150)}...`);
+            shown++;
+          }
+        }
+      }
 
       // 記錄開始搜尋
       addLog('info', `開始 AI 搜尋：${userQuery}`);
@@ -5099,7 +5364,9 @@ AI分（0-30分）：
         code: ["none", []], name: ["none", []], teacher: ["none", []], time: ["none", []],
         credits: ["none", []], room: ["none", []], cos_id: ["none", []], acy: ["none", []],
         sem: ["none", []], memo: ["none", []], cos_type: ["none", []],
-        dep_id: ["none", []], dep_name: ["none", []], paths: ["none", []]
+        dep_id: ["none", []], dep_name: ["none", []], paths: ["none", []],
+        evaluation: ["none", []],  // 評量方式（期中考、期末考、報告等及其百分比）
+        keywords: ["none", []]     // 其他關鍵字（英文授課、分組報告、實驗課等）
       };
 
       try {
@@ -5113,17 +5380,17 @@ AI分（0-30分）：
           specialInstructionsInfo += `\n🚫 特殊指令 - {除了}：需要排除的條件：${instructions.excludeKeywords.join('、')}\n   → 請在對應屬性的關鍵字中避免包含這些詞，或將它們標記為排除`;
         }
 
-        const step0Prompt = `將用戶查詢拆分成課程的 14 個屬性的關鍵字集合，並判斷每個屬性是必要條件還是可選條件
+        const step0Prompt = `將用戶查詢拆分成課程的 16 個屬性的關鍵字集合，並判斷每個屬性是必要條件還是可選條件
 
 查詢：${userQuery}${specialInstructionsInfo ? '\n' + specialInstructionsInfo : ''}
 
-課程資料結構包含以下 14 個屬性：
+課程資料結構包含以下 16 個屬性：
 1. code - 課程代碼（如：CSCS10021）
 2. name - 課程名稱（如：資料結構、物件導向程式設計等）
 3. teacher - 教師姓名
-4. time - 上課時間代碼（M=星期一, T=星期二, W=星期三, R=星期四, F=星期五；1234n=上午, 56789=下午, abc=晚上）
+4. time - 上課時間代碼（星期代碼：M=星期一, T=星期二, W=星期三, R=星期四, F=星期五, S=星期六, U=星期日；節次代碼：y=6:00~6:50, z=7:00~7:50, 1=8:00~8:50, 2=9:00~9:50, 3=10:10~11:00, 4=11:10~12:00, n=12:20~13:10, 5=13:20~14:10, 6=14:20~15:10, 7=15:30~16:20, 8=16:30~17:20, 9=17:30~18:20, a=18:30~19:20, b=19:30~20:20, c=20:30~21:20, d=21:30~22:20。**重要**：用戶輸入實際時間時，請轉換為對應的節次代碼，例如「下午2點」=6節=「6」、「上午10點」=3節=「3」、「晚上7點」=b節=「b」）
 5. credits - 學分數
-6. room - 教室
+6. room - 教室（教室代碼格式：建築代碼+教室號，如 EC114。**校區代碼對照**：【台北陽明[YM]】YN=護理館,YE=實驗大樓,YR=守仁樓,YS=醫學二館,YB=生醫工程館,YX=知行樓,YD=牙醫館,YK=傳統醫學大樓,YT=教學大樓,YM=醫學館,YL=圖書資源暨研究大樓,YA=活動中心,YH=致和樓,YC=生物醫學大樓,AS=中央研究院,PH=臺北榮總,CH=台中榮總,KH=高雄榮總；【新竹博愛[BA]】C=竹銘館,E=教學大樓,LI=實驗一館,BA=生科實驗館,BB=生科實驗二館,BI=賢齊館；【新竹光復[GF]】EA=工程一館,EB=工程二館,EC=工程三館,ED=工程四館,EE=工程五館,EF=工程六館,M=管理館,MB=管理二館,SA=科學一館,SB=科學二館,SC=科學三館,AC=學生活動中心,A=綜合一館,AB=綜合一館地下室,HA=人社一館,F=人社二館,HB=人社二館,HC=人社三館,CY=交映樓,EO=田家炳光電大樓,EV=環工館,CS=資訊技術服務中心,ES=電子資訊中心,CE=土木結構實驗室,AD=大禮堂,Lib=浩然圖書資訊中心；【台北北門[BM]】TA=會議室,TD=一般教室,TC=演講廳；【台南歸仁[GR]】CM=奇美樓；【新竹六家[LJ]】HK=客家大樓；【高雄[KS]】KB=高雄B棟,KC=高雄C棟。**重要**：用戶輸入校區名稱（如「光復校區」「六家校區」）或建築名稱（如「工程三館」「客家大樓」）時，請轉換為對應的教室代碼）
 7. cos_id - 課程編號
 8. acy - 學年度
 9. sem - 學期
@@ -5132,6 +5399,8 @@ AI分（0-30分）：
 12. dep_id - 開課系所ID
 13. dep_name - 開課系所名稱（如：資訊工程學系、電機工程學系、資工、電機等）【重要：此屬性僅用於排序加分，應標記為 "optional"】
 14. paths - 選課路徑（包含課程類型、學院、系所等。**重要：通識課程的 paths 結構為「學士班共同課程/校共同課程/通識/*」或「學士班共同課程/校共同課程/核心課程/*」。搜尋「通識」時，應匹配「通識」或「核心課程」，但不匹配整個「學士班共同課程」（學士班共同課程還包含其他非通識課程）**）【用於篩選】
+15. evaluation - 評量方式（如：期中考、期末考、報告、作業等及其配分百分比）。**重要**：當用戶查詢評量方式、考試方式、評分配分（如「期中考30%」「期末考占比40%」「不用考試」「全部報告」等）時，應將這些條件提取到 evaluation 屬性。**必須保留百分比數字**（如「期中考 30%」「final exam 30%」）。這些資訊存在於課程的關鍵字欄位（extractedKeywords）中
+16. keywords - 其他關鍵字（如：英文授課、分組報告、實驗課、線上課程等）。**重要**：當用戶查詢的條件**不符合上述 1-15 個屬性的分類**時，應將這些條件提取到 keywords 屬性。例如：「英文授課」、「分組討論」、「實驗課」、「線上授課」、「遠距課程」、「EMI」等。這些資訊存在於課程的關鍵字欄位（extractedKeywords）中。根據用戶語氣判斷是 required 還是 optional
 
 任務：
 1. 為每個屬性生成所有可能的關鍵字、變體、同義詞
@@ -5139,7 +5408,13 @@ AI分（0-30分）：
    - "required" = 必要條件（課程必須符合，不符合直接淘汰）
    - "optional" = 可選條件（符合會加分但不符合也不淘汰）
    - "none" = 未提及（不檢查此屬性）
-3. 特別注意：
+3. **【關鍵】代碼轉換（必須執行）：**
+   - **time 屬性**：將實際時間轉換為節次代碼（如「下午2點」→「6」、「上午10點」→「3」、「晚上7點」→「b」）
+   - **room 屬性**：將校區名稱/建築名稱轉換為代碼
+     * 校區名稱 → 校區代碼：「光復校區」→「GF」、「六家校區」→「LJ」、「博愛校區」→「BA」、「台北陽明校區」→「YM」
+     * 建築名稱 → 建築代碼：「工程三館」→「EC」、「客家大樓」→「HK」、「竹銘館」→「C」等
+   - **關鍵字列表中必須包含轉換後的代碼**，同時也可以保留原始描述（如「下午2點」、「光復校區」）
+4. 特別注意：
    - **dep_name（開課系所名稱）應該總是標記為 "optional"，不要標記為 "required"**
    - **paths（選課路徑）用於篩選，可以是 "required"**
    - dep_name 用於精確匹配系所名稱（加分用），paths 用於寬鬆匹配學院/系所（篩選用）
@@ -5174,7 +5449,9 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["optional", [["資訊工程學系", "資工", "DCP", "CS"]]],
-  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE"]]]
+  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE"]]],
+  "evaluation": ["none", []],
+  "keywords": ["none", []]
 }
 註：dep_name 是 optional（加分用），paths 是 required（篩選用）
 
@@ -5195,7 +5472,9 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["optional", [["資訊工程學系", "資工", "DCP", "電機工程學系", "電機", "UEE"]]],
-  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE", "電機學院", "電機", "電機系", "電機工程", "電機工程學系", "UEE", "EE", "EECS"]]]
+  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE", "電機學院", "電機", "電機系", "電機工程", "電機工程學系", "UEE", "EE", "EECS"]]],
+  "evaluation": ["none", []],
+  "keywords": ["none", []]
 }
 註：資工OR電機，全部放一組表示 OR 關係
 
@@ -5216,7 +5495,9 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["optional", [["資訊工程學系", "資工", "DCP", "電機工程學系", "電機", "UEE", "電子研究所", "IEE"]]],
-  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE", "資訊科學", "資科", "資訊管理", "資管", "電機學院", "電機", "電機系", "電機工程", "電機工程學系", "UEE", "EE", "EECS", "電子", "電子研究所", "IEE", "電控", "ICN"]]]
+  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE", "資訊科學", "資科", "資訊管理", "資管", "電機學院", "電機", "電機系", "電機工程", "電機工程學系", "UEE", "EE", "EECS", "電子", "電子研究所", "IEE", "電控", "ICN"]]],
+  "evaluation": ["none", []],
+  "keywords": ["none", []]
 }
 註：「電資學院」= 資訊學院 OR 電機學院，全部放一組表示 OR 關係
 
@@ -5237,7 +5518,9 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["none", []],
-  "paths": ["required", [["通識", "核心課程"]]]
+  "paths": ["required", [["通識", "核心課程"]]],
+  "evaluation": ["none", []],
+  "keywords": ["none", []]
 }
 註：**重要**：
 - 「通識」包含「核心課程」，所以搜尋通識應匹配「通識」或「核心課程」
@@ -5261,7 +5544,9 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["none", []],
-  "paths": ["required", [["通識", "核心課程"]]]
+  "paths": ["required", [["通識", "核心課程"]]],
+  "evaluation": ["none", []],
+  "keywords": ["none", []]
 }
 註：
 - **週一週三晚上** = Mabc OR Wabc（週一晚上 OR 週三晚上，任一即可）
@@ -5316,7 +5601,81 @@ AI分（0-30分）：
 - paths 設為 optional（匹配會加分，但不匹配也不淘汰）
 - 這樣可以找到所有相關課程，不論它們在哪個學院開課
 
-範例 8（測試課程概述關鍵字提取）：
+範例 8（測試實際時間轉換）：
+輸入：下午2點到3點的課
+輸出：
+{
+  "code": ["none", []],
+  "name": ["none", []],
+  "teacher": ["none", []],
+  "time": ["required", [["6", "67", "T6", "W6", "R6", "F6", "M6"]]],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []]
+}
+註：**重要**：用戶輸入實際時間時，必須轉換為對應的節次代碼：
+- 下午2點（14:20）= 6節 → time 關鍵字列表必須包含 "6"
+- 下午3點（15:30）= 7節 → time 關鍵字列表必須包含 "7"
+- 上午10點（10:10）= 3節 → time 關鍵字列表必須包含 "3"
+- 晚上7點（19:30）= b節 → time 關鍵字列表必須包含 "b"
+- **關鍵字列表中必須包含轉換後的代碼，這是匹配的關鍵！**
+
+範例 9（測試校區/教室代碼轉換）：
+輸入：六家校區的客家相關課程
+輸出：
+{
+  "code": ["none", []],
+  "name": ["required", [["客家", "客語", "客家文化", "客家語言", "客家研究"]]],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["required", [["HK", "LJ", "客家大樓", "六家校區", "新竹六家"]]],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["optional", [["客家文化學院", "客家", "人文社會學院"]]],
+  "paths": ["optional", [["客家", "人文社會"]]]
+}
+註：**重要**：用戶輸入校區或建築名稱時，必須轉換為對應的代碼：
+- 六家校區 → 校區代碼 "LJ" + 建築代碼 "HK"（客家大樓）→ room 關鍵字列表必須包含 "LJ" 和 "HK"
+- 光復校區 → 校區代碼 "GF" → room 關鍵字列表必須包含 "GF"
+- 博愛校區 → 校區代碼 "BA" → room 關鍵字列表必須包含 "BA"
+- 工程三館 → 建築代碼 "EC" → room 關鍵字列表必須包含 "EC"
+- 客家大樓 → 建築代碼 "HK" → room 關鍵字列表必須包含 "HK"
+- **關鍵字列表中必須包含轉換後的代碼，這是匹配的關鍵！**
+
+範例 10（測試排除條件 - 不在光復校區）：
+輸入：不在光復校區的通識課
+輸出：
+{
+  "code": ["none", []],
+  "name": ["none", []],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["required", [["通識", "核心課程"]]]
+}
+註：**重要**：「不在光復校區」是排除條件，不應該在 room 屬性中設定 required 關鍵字。排除條件會在後處理階段自動處理（通過 {除了} 指令或排除邏輯）。如果用戶明確要求「在六家校區」這類正向條件，才需要在 room 中設定 required 關鍵字並包含代碼。
+
+範例 11（測試課程概述關鍵字提取）：
 輸入：陣列
 輸出：
 {
@@ -5337,12 +5696,12 @@ AI分（0-30分）：
 }
 註：搜尋「陣列」這類專業術語時，課程名稱通常不包含此詞，需要從課程概述中提取的關鍵字（searchKeywords）來匹配。應包含相關術語的變體和同義詞。
 
-範例 9（測試評分方式關鍵字提取）：
+範例 12（測試評分方式關鍵字提取）：
 輸入：期中考
 輸出：
 {
   "code": ["none", []],
-  "name": ["required", [["期中考", "midterm", "midterm exam", "期中", "期中測驗"]]],
+  "name": ["none", []],
   "teacher": ["none", []],
   "time": ["none", []],
   "credits": ["none", []],
@@ -5354,11 +5713,12 @@ AI分（0-30分）：
   "cos_type": ["none", []],
   "dep_id": ["none", []],
   "dep_name": ["none", []],
-  "paths": ["none", []]
+  "paths": ["none", []],
+  "evaluation": ["required", [["期中考", "midterm", "midterm exam", "期中", "期中測驗"]]]
 }
-註：搜尋「期中考」時，需要從評分方式欄位提取的關鍵字來匹配。這類資訊不會出現在課程名稱中，只會出現在課程綱要的評量方式中。
+註：搜尋「期中考」時，應提取到 evaluation 屬性。這類資訊不會出現在課程名稱中，只會出現在課程綱要的評量方式中。
 
-範例 10（測試工具名稱關鍵字提取）：
+範例 13（測試工具名稱關鍵字提取）：
 輸入：numpy
 輸出：
 {
@@ -5379,7 +5739,7 @@ AI分（0-30分）：
 }
 註：搜尋「numpy」這類程式庫/工具名稱時，需要從課程概述或教科書欄位提取的關鍵字來匹配。應包含相關的工具名稱和領域術語。
 
-範例 11（測試先修科目關鍵字提取）：
+範例 14（測試先修科目關鍵字提取）：
 輸入：線性代數 先修
 輸出：
 {
@@ -5400,7 +5760,7 @@ AI分（0-30分）：
 }
 註：搜尋「XX 先修」時，需要從先修科目/先備能力欄位（存於 memo 或 searchKeywords）提取關鍵字來匹配。name 匹配課程內容，memo 匹配「先修」相關詞。
 
-範例 12（測試教學方法關鍵字提取）：
+範例 15（測試教學方法關鍵字提取）：
 輸入：翻轉教學
 輸出：
 {
@@ -5420,6 +5780,75 @@ AI分（0-30分）：
   "paths": ["none", []]
 }
 註：搜尋「翻轉教學」這類教學方法時，需要從教學方法欄位提取的關鍵字來匹配。應包含相關的教學方式和互動形式術語。
+
+範例 16（測試評量方式配分占比查詢）：
+輸入：期末考占比30%的資工課
+輸出：
+{
+  "code": ["none", []],
+  "name": ["none", []],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["optional", [["資訊工程學系", "資工", "DCP", "CS"]]],
+  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE"]]],
+  "evaluation": ["required", [["期末考 30%", "final exam 30%", "final 30%", "期末 30%", "期末測驗 30%"]]],
+  "keywords": ["none", []]
+}
+註：**重要**：用戶查詢評量方式配分（如「期中考30%」「期末考占比30%」「報告占60%」「不用考試」等）時，這些條件應提取到 evaluation 屬性，**必須保留百分比數字**。配分資訊存在於課程的關鍵字欄位（extractedKeywords）中。
+
+範例 17（測試 keywords 屬性 - 不屬於其他分類的條件）：
+輸入：英文授課的資工課
+輸出：
+{
+  "code": ["none", []],
+  "name": ["none", []],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["optional", [["資訊工程學系", "資工", "DCP", "CS"]]],
+  "paths": ["required", [["資訊學院", "資工", "資訊工程", "資訊工程學系", "DCP", "CS", "CSIE"]]],
+  "evaluation": ["none", []],
+  "keywords": ["required", [["英文授課", "英語授課", "全英文", "EMI", "English", "taught in English"]]]
+}
+註：「英文授課」不屬於 name、teacher、time 等任何一個固定屬性，所以放入 keywords 屬性。這些資訊會從課程的關鍵字欄位（extractedKeywords）中匹配。
+
+範例 18（測試 keywords 屬性 - 多個 keywords 條件）：
+輸入：有分組報告和實驗課的課程
+輸出：
+{
+  "code": ["none", []],
+  "name": ["none", []],
+  "teacher": ["none", []],
+  "time": ["none", []],
+  "credits": ["none", []],
+  "room": ["none", []],
+  "cos_id": ["none", []],
+  "acy": ["none", []],
+  "sem": ["none", []],
+  "memo": ["none", []],
+  "cos_type": ["none", []],
+  "dep_id": ["none", []],
+  "dep_name": ["none", []],
+  "paths": ["none", []],
+  "evaluation": ["none", []],
+  "keywords": ["required", [["分組報告", "分組討論", "小組報告", "團隊報告", "group report", "team project"], ["實驗課", "實驗", "實作課", "實作", "lab", "laboratory", "實習"]]]
+}
+註：「分組報告」和「實驗課」是兩個 AND 條件，所以放在兩個內層陣列中。第一組是分組報告的同義詞（OR），第二組是實驗課的同義詞（OR），兩組之間是 AND 關係。
 
 現在為此查詢生成關鍵字集合：${userQuery}
 
@@ -5554,7 +5983,12 @@ ${Object.entries(attributeSets).filter(([k, [req, kw]]) => kw.length > 0).map(([
             [p.type, p.college, p.department, p.category].filter(x => x).join('/')
           ).join('; ');
 
-          return `${i + 1}. ${c.name}|${c.teacher || ''}|${c.time || ''}|${c.dep_name || ''}|${pathsText || ''}|${c.cos_type || ''}`;
+          // 如果有提取的關鍵字，也顯示（用於百分比匹配）
+          const keywordsPreview = c.extractedKeywords
+            ? `｜關鍵字:${c.extractedKeywords.substring(0, 150)}${c.extractedKeywords.length > 150 ? '...' : ''}`
+            : '';
+
+          return `${i + 1}. ${c.name}|${c.teacher || ''}|${c.time || ''}|${c.room || ''}|${c.dep_name || ''}|${pathsText || ''}|${c.cos_type || ''}${keywordsPreview}`;
         }).join('\n');
 
         // 分離必要項和可選項
@@ -5583,11 +6017,32 @@ ${Object.entries(attributeSets).filter(([k, [req, kw]]) => kw.length > 0).map(([
 必要條件（ALL required，缺一不可）：
 ${requiredAttrs.length > 0 ? requiredAttrs.map(([k, [req, kw]]) => `${k}: ${formatKeywords(kw)}`).join('\n') : '無'}
 
-課程列表：
+課程列表（格式：編號. 課程名稱|教師|時間|教室|系所|路徑|類型｜關鍵字:...）：
 ${courseList}
 
 匹配規則：
-1. 時間匹配規則（IMPORTANT）：
+1. 評量方式匹配規則（evaluation）：
+   **【重要】Step 1 對 evaluation 採用極度寬鬆策略，幾乎不檢查**：
+   - 如果存在 evaluation 條件（如「期末考 30%」），**請忽略它，專注於匹配其他條件**（如 paths, dep_name 等）
+   - **原因**：evaluation 百分比資訊需要從完整課程資料中提取，Step 1 看到的課程列表可能不包含完整的評量資訊
+   - **Step 1 的策略**：只要課程符合其他條件（如系所、路徑），就應該保留，無論評量資訊是否可見
+   - **唯一例外**：如果關鍵字中**非常明確**地顯示完全不同的百分比（如查詢「期末考 30%」但清楚看到「期末考 60%」「final exam 70%」），才考慮淘汰
+   - 範例：evaluation: [[期末考 30%, final exam 30%]] + paths: [[資工, DCP]]
+     * ✓ 保留：任何路徑包含「資工」或「DCP」的課程，**無論關鍵字中是否有評量資訊**
+     * ✓ 保留：關鍵字沒有評量方式資訊的資工課程
+     * ✓ 保留：關鍵字只有「期末考」但沒有百分比的資工課程
+     * ✓ 保留：關鍵字包含「期末考 30%」的資工課程
+     * ✓ 保留：關鍵字包含「期末考 40%」的資工課程（只是略有不同，保留）
+     * ✗ 淘汰：路徑不包含資工的課程（其他 required 條件不符）
+
+2. 其他關鍵字匹配規則（keywords）：
+   - keywords 屬性用於不屬於其他固定屬性的條件（如：英文授課、分組報告、實驗課等）
+   - 從課程的「關鍵字」欄位中匹配
+   - 範例：keywords: [[英文授課, EMI, English]]
+     * ✓ 保留：關鍵字包含「英文授課」或「EMI」或「English」
+     * ✗ 淘汰：關鍵字中完全沒有相關詞彙
+
+3. 時間匹配規則（IMPORTANT）：
    時間關鍵字格式：
    - T1234n = 星期二上午+中午（第1,2,3,4,n節）
    - T56789 = 星期二下午（第5,6,7,8,9節）
@@ -5602,10 +6057,15 @@ ${courseList}
    - ✓ 符合：Mabc, Mabc-, M56abc, M56abcn, Wabc, Wabc-, W9abc, W56abcn
    - ✗ 不符合：M56, M78, Mab, Tab, Tabc, W234, W78
 
-2. 路徑匹配：課程路徑包含任一關鍵字即可
+4. 教室/校區匹配規則：
+   - room: [[HK, 客家大樓]] = 教室包含 HK 或「客家大樓」
+   - room: [[EC, 工程三館]] = 教室包含 EC（工程三館）
+   - 教室代碼範例：EC114[GF] = 工程三館 114 教室（光復校區）
+
+5. 路徑匹配：課程路徑包含任一關鍵字即可
    - paths: [[通識, 核心課程]] = 路徑含「通識」或「核心課程」
 
-3. ALL Required 條件必須同時符合，缺一就淘汰
+6. ALL Required 條件必須同時符合，缺一就淘汰
 
 只輸出符合的課程編號（逗號分隔），無則輸出「無」`;
 
@@ -5637,6 +6097,95 @@ ${courseList}
       console.log(`✅ Step 1 完成 - 保留 ${step1Courses.length}/${allCourses.length} 門課程` +
                   (step1CoursesAll.length !== step1Courses.length ? ` (去重前 ${step1CoursesAll.length} 門)` : ''));
       addLog('success', `Step 1 完成：從 ${allCourses.length} 門課程中篩選出 ${step1Courses.length} 門相關課程`);
+
+      // 調試：檢查 Step 1 結果是否有關鍵字
+      const coursesWithKeywords = step1Courses.filter(c => c.extractedKeywords).length;
+      console.log(`📊 Step 1 結果中有關鍵字的課程：${coursesWithKeywords}/${step1Courses.length} 門`);
+
+      // 調試：顯示前 5 門課程的關鍵字內容
+      if (coursesWithKeywords > 0) {
+        console.log('\n📝 Step 1 前 5 門課程的關鍵字樣本:');
+        step1Courses.filter(c => c.extractedKeywords).slice(0, 5).forEach((c, i) => {
+          const keywords = c.extractedKeywords.substring(0, 300);
+          console.log(`  ${i + 1}. ${c.name}: ${keywords}${c.extractedKeywords.length > 300 ? '...' : ''}`);
+        });
+      }
+
+      // 調試：檢查百分比要求
+      const percentageReqs = extractPercentageRequirements(attributeSets);
+      if (percentageReqs.length > 0) {
+        console.log('\n🎯 百分比要求檢查:');
+        percentageReqs.forEach(req => {
+          console.log(`  要求: ${req.percentage}% (同義詞: ${req.synonyms.join(', ')})`);
+        });
+
+        // 檢查有多少課程符合百分比
+        let matchCount = 0;
+        let mismatchCount = 0;
+        let noKeywordCount = 0;
+
+        step1Courses.forEach(course => {
+          if (!course.extractedKeywords) {
+            noKeywordCount++;
+            return;
+          }
+
+          const hasMismatch = hasMismatchedPercentage(course, percentageReqs);
+          if (hasMismatch) {
+            mismatchCount++;
+          } else {
+            matchCount++;
+          }
+        });
+
+        console.log(`\n  結果: ${matchCount} 門符合, ${mismatchCount} 門不符合, ${noKeywordCount} 門無關鍵字`);
+
+        // 顯示資工系課程的評量方式（幫助 debug）
+        console.log('\n📊 資工系相關課程的評量方式檢查:');
+        const cseCourses = step1Courses.filter(c => {
+          const pathsText = (c.paths || []).map(p => p.department || '').join(' ');
+          return pathsText.includes('資訊工程') || pathsText.includes('DCP') || (c.dep_name && c.dep_name.includes('資訊工程'));
+        });
+
+        if (cseCourses.length === 0) {
+          console.log('  ⚠️ Step 1 未找到任何資工系課程');
+        } else {
+          cseCourses.forEach(c => {
+            const hasMismatch = hasMismatchedPercentage(c, percentageReqs);
+            const statusIcon = hasMismatch ? '✗' : '✓';
+            // 提取評量方式關鍵字
+            const evalMatch = (c.extractedKeywords || '').match(/(期中考|期末考|final exam|midterm exam|final|midterm)\s+\d+%/gi);
+            const evalInfo = evalMatch ? evalMatch.join(', ') : '無評量方式資訊';
+            console.log(`  ${statusIcon} ${c.name} - ${evalInfo}`);
+          });
+        }
+
+        // 顯示幾個符合的例子（如果有）
+        if (matchCount > 0) {
+          console.log('\n✅ 符合百分比要求的課程範例:');
+          let shown = 0;
+          for (const course of step1Courses) {
+            if (course.extractedKeywords && !hasMismatchedPercentage(course, percentageReqs)) {
+              console.log(`  - ${course.name}`);
+              console.log(`    關鍵字: ${course.extractedKeywords.substring(0, 200)}${course.extractedKeywords.length > 200 ? '...' : ''}`);
+              shown++;
+              if (shown >= 3) break;
+            }
+          }
+
+          // 當有百分比要求時，Step 1 的 JavaScript 過濾已經精確完成了百分比匹配
+          // 直接使用這些符合的課程，跳過 Step 2 AI 精準匹配（避免 AI 誤判）
+          console.log(`\n💡 檢測到百分比要求，已通過 JavaScript 精確過濾出 ${matchCount} 門符合的課程`);
+          console.log('💡 將跳過 Step 2 AI 精準匹配，直接使用這些課程進行評分');
+
+          // 設置標記，表示需要使用百分比過濾模式
+          window._usePercentageFilterMode = true;
+          window._percentageFilteredCourses = step1Courses.filter(course =>
+            course.extractedKeywords && !hasMismatchedPercentage(course, percentageReqs)
+          );
+          console.log(`✅ 已準備 ${window._percentageFilteredCourses.length} 門符合百分比要求的課程`);
+        }
+      }
 
       // 輸出前 20 個課程的詳細信息
       if (step1Courses.length > 0) {
@@ -5736,12 +6285,39 @@ ${courseList}
         if (instructions.excludeKeywords && instructions.excludeKeywords.length > 0) {
           console.log('\n🚫 應用排除關鍵字篩選:', instructions.excludeKeywords);
           const beforeCount = finalCourses.length;
+
+          // 校區名稱到代碼的對照表
+          const campusCodeMap = {
+            '光復校區': 'GF',
+            '光復': 'GF',
+            '六家校區': 'LJ',
+            '六家': 'LJ',
+            '博愛校區': 'BA',
+            '博愛': 'BA',
+            '台北陽明校區': 'YM',
+            '台北陽明': 'YM',
+            '陽明校區': 'YM',
+            '陽明': 'YM'
+          };
+
           finalCourses = finalCourses.filter(course => {
             const shouldExclude = instructions.excludeKeywords.some(keyword => {
-              return (course.name && course.name.includes(keyword)) ||
-                     (course.teacher && course.teacher.includes(keyword)) ||
-                     (course.dep_name && course.dep_name.includes(keyword)) ||
-                     (course.cos_type && course.cos_type.includes(keyword));
+              // 檢查基本屬性匹配
+              if ((course.name && course.name.includes(keyword)) ||
+                  (course.teacher && course.teacher.includes(keyword)) ||
+                  (course.dep_name && course.dep_name.includes(keyword)) ||
+                  (course.cos_type && course.cos_type.includes(keyword)) ||
+                  (course.room && course.room.includes(keyword))) {
+                return true;
+              }
+
+              // 檢查校區代碼匹配（如「光復校區」→ 檢查是否包含 [GF]）
+              const campusCode = campusCodeMap[keyword];
+              if (campusCode && course.room && course.room.includes(`[${campusCode}]`)) {
+                return true;
+              }
+
+              return false;
             });
             if (shouldExclude) {
               console.log(`  ⊗ 排除：${course.name}（包含排除關鍵字）`);
@@ -5750,6 +6326,24 @@ ${courseList}
           });
           console.log(`✅ 排除關鍵字篩選已應用：排除了 ${beforeCount - finalCourses.length} 門課程，剩餘 ${finalCourses.length} 門`);
           addLog('info', `排除關鍵字篩選：從 ${beforeCount} 門課程中排除 ${beforeCount - finalCourses.length} 門包含排除關鍵字的課程`);
+        }
+
+        // ===== 百分比精確匹配過濾 =====
+        const percentageRequirements = extractPercentageRequirements(attributeSets);
+        if (percentageRequirements.length > 0) {
+          console.log('\n🔢 應用百分比精確匹配過濾:', percentageRequirements.map(r => `${r.percentage}% (同義詞: ${r.synonyms.join(', ')})`));
+          const beforeCount = finalCourses.length;
+
+          finalCourses = finalCourses.filter(course => {
+            const hasMismatch = hasMismatchedPercentage(course, percentageRequirements);
+            if (hasMismatch) {
+              console.log(`  ⊗ 淘汰：${course.name}（百分比不匹配）`);
+            }
+            return !hasMismatch;
+          });
+
+          console.log(`✅ 百分比過濾已應用：淘汰了 ${beforeCount - finalCourses.length} 門課程，剩餘 ${finalCourses.length} 門`);
+          addLog('info', `百分比過濾：從 ${beforeCount} 門課程中淘汰 ${beforeCount - finalCourses.length} 門百分比不匹配的課程`);
         }
 
         if (finalCourses.length === 0) {
@@ -5786,9 +6380,17 @@ ${courseList}
         // ===== Step 2（快速模式）：評分（獨立步驟）=====
         console.log('\n🔍 ===== Step 2（快速模式）：AI 評分（獨立評分步驟）=====');
         updateAIProgress('Step 2 進行中 - 評分課程', 66);
-        const scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, aiMode);
 
-        // 按分數排序課程
+        let scoreMap = null;
+        try {
+          scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, aiMode, instructions);
+        } catch (error) {
+          console.error('⚠️ Step 2 評分失敗，回退到 Step 1 結果（無分數）:', error);
+          addLog('warning', 'Step 2 評分失敗，返回 Step 1 結果（無分數）');
+          scoreMap = null;
+        }
+
+        // 按分數排序課程（如果評分成功）
         if (scoreMap && scoreMap.size > 0) {
           finalCourses.sort((a, b) => {
             const scoreA = scoreMap.get(a.cos_id || a.code);
@@ -5798,14 +6400,27 @@ ${courseList}
             return totalB - totalA;
           });
 
+          // 過濾掉低於 30 分的課程（視為誤判）
+          const beforeFilterCount = finalCourses.length;
+          finalCourses = finalCourses.filter(course => {
+            const scoreData = scoreMap.get(course.cos_id || course.code);
+            return scoreData && scoreData.total >= 30;
+          });
+          const filteredCount = beforeFilterCount - finalCourses.length;
+          if (filteredCount > 0) {
+            console.log(`🗑️ 過濾掉 ${filteredCount} 門低分課程（< 30 分，視為誤判）`);
+          }
+
           console.log(`✅ Step 2（快速模式）完成 - 已按分數排序 ${finalCourses.length} 門課程（前10門）:`);
           finalCourses.slice(0, 10).forEach((c, i) => {
             const scoreData = scoreMap.get(c.cos_id || c.code);
             if (scoreData) {
               const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-              console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.time} | 路徑:${pathsText || '無'} (時間:${scoreData.time} 路徑:${scoreData.path} 匹配:${scoreData.match} AI:${scoreData.ai || 0})`);
+              console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.time} | 路徑:${pathsText || '無'} (內容:${scoreData.content} 時間:${scoreData.time} 地點:${scoreData.location} 路徑:${scoreData.path} 匹配:${scoreData.recommend})`);
             }
           });
+        } else {
+          console.log(`⚠️ Step 2 評分失敗或無結果，返回 Step 1 的 ${finalCourses.length} 門課程（無分數）`);
         }
 
         const courseIds = finalCourses.map(course => course.cos_id || course.code);
@@ -5827,19 +6442,112 @@ ${courseList}
         return [];
       }
 
+      // ===== 檢查百分比過濾：只有在僅有 evaluation 條件時才跳過 Step 2 =====
+      // 統計有多少個 required 條件（不包括 evaluation）
+      const requiredAttributesExceptEval = Object.entries(attributeSets)
+        .filter(([key, [requirement, keywords]]) =>
+          key !== 'evaluation' && requirement === 'required' && keywords.length > 0
+        ).length;
+
+      if (window._usePercentageFilterMode && window._percentageFilteredCourses && window._percentageFilteredCourses.length > 0) {
+        // 檢查是否有其他 required 條件（需要 AND 邏輯）
+        if (requiredAttributesExceptEval > 0) {
+          // 有其他 required 條件（如 paths），需要 Step 2 AI 執行 AND 邏輯
+          console.log(`\n💡 檢測到百分比要求 + ${requiredAttributesExceptEval} 個其他 required 條件（需要 AND 邏輯）`);
+          console.log(`💡 將執行 Step 2 AI 精準匹配，使用已過濾的 ${window._percentageFilteredCourses.length} 門課程`);
+
+          // 清除 mode 標記，但保留 filtered courses 供 Step 2 使用
+          delete window._usePercentageFilterMode;
+          // 不刪除 window._percentageFilteredCourses，讓 Step 2 使用它
+        } else {
+          // 只有 evaluation 條件，可以跳過 Step 2
+          console.log(`\n💡 百分比過濾模式：只有 evaluation 條件，已通過 JavaScript 精確過濾出 ${window._percentageFilteredCourses.length} 門課程`);
+          console.log('💡 跳過 Step 2 AI 精準匹配，直接進入評分階段');
+
+          // 直接使用過濾後的課程，進入評分
+          let finalCourses = window._percentageFilteredCourses;
+
+          // 清除標記
+          delete window._usePercentageFilterMode;
+          delete window._percentageFilteredCourses;
+
+          // ===== Step 2（評分）：為過濾後的課程評分 =====
+          console.log('\n🔍 ===== Step 2：AI 評分（百分比過濾模式）=====');
+          updateAIProgress('Step 2 進行中 - 評分課程', 70);
+
+          let scoreMap = null;
+          try {
+            scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, 'precise', instructions);
+          } catch (error) {
+            console.error('⚠️ Step 2 評分失敗，返回未評分結果:', error);
+            addLog('warning', 'Step 2 評分失敗，返回未評分結果');
+            scoreMap = null;
+          }
+
+          // 按分數排序課程（如果評分成功）
+          if (scoreMap && scoreMap.size > 0) {
+            finalCourses.sort((a, b) => {
+              const scoreA = scoreMap.get(a.cos_id || a.code);
+              const scoreB = scoreMap.get(b.cos_id || b.code);
+              const totalA = scoreA ? scoreA.total : 0;
+              const totalB = scoreB ? scoreB.total : 0;
+              return totalB - totalA;
+            });
+
+            console.log(`✅ 百分比過濾模式完成 - 已按分數排序 ${finalCourses.length} 門課程:`);
+            finalCourses.forEach((c, i) => {
+              const scoreData = scoreMap.get(c.cos_id || c.code);
+              if (scoreData) {
+                const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
+                console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.teacher || '無'} | ${c.time || '無'} | 路徑:${pathsText || '無'} (內容:${scoreData.content} 時間:${scoreData.time} 地點:${scoreData.location} 路徑:${scoreData.path} 匹配:${scoreData.recommend})`);
+              }
+            });
+          } else {
+            console.log(`✅ 百分比過濾模式完成 - 返回 ${finalCourses.length} 門課程（未評分）`);
+            finalCourses.forEach((c, i) => {
+              const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
+              console.log(`  ${i + 1}. ${c.name} | ${c.teacher || '無'} | ${c.time || '無'} | 路徑:${pathsText || '無'}`);
+            });
+          }
+
+          const courseIds = finalCourses.map(course => course.cos_id || course.code);
+          aiThinking.style.display = 'none';
+          const totalSeconds = stopAITimer();
+          console.log(`⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
+          addLog('info', `⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
+          addLog('success', `✅ 百分比過濾模式完成：找到 ${courseIds.length} 門符合「期末考 30%」的課程`);
+          return { courseIds, scoreMap };
+        }
+      }
+
       // ===== Step 2：精準匹配（分塊並行處理）=====
       updateAIProgress('Step 2 進行中 - 精準匹配 (較長時間)', 60);
       console.log('\n🔍 ===== Step 2：AI 精準匹配（分塊並行處理）=====');
       console.log('🎯 精準模式：進入 Step 2 精準匹配');
 
+      // 選擇輸入來源：如果有百分比過濾結果，使用它；否則使用 Step 1 結果
+      const step2InputCourses = window._percentageFilteredCourses || step1Courses;
+      const coursesFromPercentageFilter = !!window._percentageFilteredCourses; // 標記課程是否來自百分比過濾
+      if (window._percentageFilteredCourses) {
+        console.log(`📌 使用百分比過濾後的 ${step2InputCourses.length} 門課程作為 Step 2 輸入`);
+        console.log('\n📋 送入 Step 2 的課程列表：');
+        step2InputCourses.forEach((c, i) => {
+          const pathsText = (c.paths || []).map(p =>
+            [p.type, p.college, p.department, p.category].filter(x => x).join('/')
+          ).join('; ');
+          console.log(`  ${i + 1}. ${c.name} | ${c.dep_name || '無系所'} | 路徑: ${pathsText || '無路徑'}`);
+        });
+        delete window._percentageFilteredCourses; // 清理標記
+      }
+
       // 分塊處理 Step 2，避免 MAX_TOKENS 錯誤
       const STEP2_CHUNK_SIZE = 200;  // 每塊 200 門課程
       const step2Chunks = [];
-      for (let i = 0; i < step1Courses.length; i += STEP2_CHUNK_SIZE) {
-        step2Chunks.push(step1Courses.slice(i, i + STEP2_CHUNK_SIZE));
+      for (let i = 0; i < step2InputCourses.length; i += STEP2_CHUNK_SIZE) {
+        step2Chunks.push(step2InputCourses.slice(i, i + STEP2_CHUNK_SIZE));
       }
 
-      console.log(`📦 將 ${step1Courses.length} 門課程分成 ${step2Chunks.length} 塊進行精準匹配`);
+      console.log(`📦 將 ${step2InputCourses.length} 門課程分成 ${step2Chunks.length} 塊進行精準匹配`);
 
       const step2Promises = step2Chunks.map(async (chunk, chunkIdx) => {
         const courseList = chunk.map((c, i) => {
@@ -5857,7 +6565,9 @@ ${courseList}
             c.cos_type || '',
             c.credits ? `${c.credits}學分` : '',
             c.code || '',
-            c.memo || ''
+            c.memo || '',
+            // 添加關鍵字用於百分比匹配
+            c.extractedKeywords ? `關鍵字:${c.extractedKeywords.substring(0, 200)}${c.extractedKeywords.length > 200 ? '...' : ''}` : ''
           ].filter(p => p).join('｜');
           return parts;
         }).join('\n');
@@ -5887,6 +6597,7 @@ ${courseList}
 
 【必要條件（Required）】：
 ${requiredAttrs.length > 0 ? requiredAttrs.map(([k, [req, kw]]) => `${k}: ${formatKeywords(kw)}`).join('\n') : '無'}
+${coursesFromPercentageFilter ? '\n⚠️ 【重要】這些課程已通過 JavaScript 精確百分比過濾，evaluation 條件已驗證，Step 2 不需要再檢查 evaluation 條件。' : ''}
 
 【可選條件（Optional）】：
 ${optionalAttrs.length > 0 ? optionalAttrs.map(([k, [req, kw]]) => `${k}: ${formatKeywords(kw)}`).join('\n') : '無'}
@@ -5903,6 +6614,32 @@ ${courseList}
 
 1. 必要條件（Required）：
    - 所有 Required 屬性必須同時符合（AND 邏輯）
+
+   - **評量方式匹配規則（evaluation）**：
+     ${coursesFromPercentageFilter ?
+     `* ⚠️ 【重要】這些課程已通過 JavaScript 精確百分比過濾，evaluation 條件已驗證
+     * **Step 2 任務**：跳過 evaluation 檢查，專注於檢查其他 required 條件（如 paths、dep_name 等）
+     * **所有課程的 evaluation 條件都視為符合**`
+     :
+     `* 如果 evaluation 關鍵字包含具體百分比（如「期末考 30%」「final exam 30%」），這是 **Required 條件**
+     * 課程的「關鍵字」欄位**必須包含完全相同的百分比**
+     * 如果關鍵字中有該評量方式但百分比不同（如「期末考 40%」），**必須淘汰**
+     * 如果關鍵字中完全沒有該評量方式的百分比資訊，**必須淘汰**
+     * 範例：evaluation: [[期末考 30%, final exam 30%]]
+       ✓ 符合：關鍵字包含「期末考 30%」或「final exam 30%」
+       ✗ 不符合：關鍵字包含「期末考 40%」（百分比不符）
+       ✗ 不符合：關鍵字只有「期末考」但沒有百分比資訊`}
+
+   - **其他關鍵字匹配規則（keywords）**【從關鍵字欄位匹配】：
+     * keywords 屬性用於不屬於其他固定屬性的條件（如：英文授課、分組報告、實驗課等）
+     * 從課程的「關鍵字」欄位中匹配
+     * 二維陣列邏輯：[[group1], [group2]] = 每組都要匹配（AND），組內任一匹配即可（OR）
+     * 範例 1：keywords: [[英文授課, EMI, English]]
+       ✓ 符合：關鍵字包含「英文授課」或「EMI」或「English」
+       ✗ 不符合：關鍵字中完全沒有相關詞彙
+     * 範例 2：keywords: [[分組報告, group report], [實驗課, lab]]
+       ✓ 符合：關鍵字同時包含（分組報告 OR group report）AND（實驗課 OR lab）
+       ✗ 不符合：只有分組報告但沒有實驗課
 
    - **時間匹配規則（time）**【最高優先級、最嚴格】：
      時間關鍵字格式說明：
@@ -5929,6 +6666,20 @@ ${courseList}
    - **路徑匹配規則（paths）**【寬鬆匹配】：
      * 檢查 paths 文字是否包含關鍵字
      * 只要匹配任一組內的任一關鍵字即可（雙重 OR）
+     * **重要**：課程可能有多條路徑，只要**任一路徑**包含關鍵字即可
+     * 範例 1：paths: [[資工, 資訊工程, DCP]]
+       ✓ 符合：路徑包含「學士班課程/資訊學院/DCP(資訊工程學系)/一般學士班」
+       ✓ 符合：路徑包含「學士班課程/醫學院/(醫學系)/一般學士班; 學士班課程/資訊學院/DCP(資訊工程學系)/一般學士班」（多路徑課程，其中一條是資工）
+       ✗ 不符合：路徑只有「學士班課程/電機學院/UEE(電機工程學系)/一般學士班」（完全沒有資工相關路徑）
+
+   - **教室/校區匹配規則（room）**【精確匹配】：
+     * 檢查教室欄位是否包含關鍵字
+     * 範例 1：room: [[HK, 客家大樓]] → 教室包含 HK 或「客家大樓」
+       ✓ 符合：HK101[LJ], HK202[LJ], 客家大樓
+       ✗ 不符合：EC114[GF], M117[GF]
+     * 範例 2：room: [[EC]] → 工程三館（教室代碼包含 EC）
+       ✓ 符合：EC114[GF], EC015[GF], EC316[GF]
+       ✗ 不符合：EB101[GF], M117[GF], HK101[LJ]
 
    - 不符合任一 Required 屬性：直接淘汰
 
@@ -5974,6 +6725,20 @@ ${courseList}
         console.log('\n🚫 ===== 應用排除條件 =====');
         const beforeCount = finalCourses.length;
 
+        // 校區名稱到代碼的對照表
+        const campusCodeMap = {
+          '光復校區': 'GF',
+          '光復': 'GF',
+          '六家校區': 'LJ',
+          '六家': 'LJ',
+          '博愛校區': 'BA',
+          '博愛': 'BA',
+          '台北陽明校區': 'YM',
+          '台北陽明': 'YM',
+          '陽明校區': 'YM',
+          '陽明': 'YM'
+        };
+
         finalCourses = finalCourses.filter(course => {
           // 檢查課程的所有屬性是否包含排除關鍵字
           for (const excludeKeyword of instructions.excludeKeywords) {
@@ -6004,6 +6769,17 @@ ${courseList}
               console.log(`  ⊗ 排除：${course.name}（時間包含 "${excludeKeyword}"）`);
               return false;
             }
+            if (course.room && course.room.toLowerCase().includes(keyword)) {
+              console.log(`  ⊗ 排除：${course.name}（教室包含 "${excludeKeyword}"）`);
+              return false;
+            }
+
+            // 特殊處理：校區代碼匹配（如「光復校區」→ 檢查是否包含 [GF]）
+            const campusCode = campusCodeMap[excludeKeyword];
+            if (campusCode && course.room && course.room.includes(`[${campusCode}]`)) {
+              console.log(`  ⊗ 排除：${course.name}（教室 ${course.room} 位於 ${excludeKeyword}）`);
+              return false;
+            }
           }
           return true;
         });
@@ -6015,6 +6791,31 @@ ${courseList}
           addLog('info', `應用排除條件：排除了 ${excludedCount} 門課程`);
         } else {
           console.log(`✅ 排除條件已應用：沒有課程被排除`);
+        }
+      }
+
+      // ===== 百分比精確匹配過濾 =====
+      const percentageRequirements = extractPercentageRequirements(attributeSets);
+      if (percentageRequirements.length > 0) {
+        console.log('\n🔢 ===== 應用百分比精確匹配過濾 =====');
+        console.log('百分比要求:', percentageRequirements.map(r => `${r.percentage}% (同義詞: ${r.synonyms.join(', ')})`));
+        const beforeCount = finalCourses.length;
+
+        finalCourses = finalCourses.filter(course => {
+          const hasMismatch = hasMismatchedPercentage(course, percentageRequirements);
+          if (hasMismatch) {
+            console.log(`  ⊗ 淘汰：${course.name}（百分比不匹配）`);
+          }
+          return !hasMismatch;
+        });
+
+        const afterCount = finalCourses.length;
+        const eliminatedCount = beforeCount - afterCount;
+        if (eliminatedCount > 0) {
+          console.log(`✅ 百分比過濾已應用：淘汰了 ${eliminatedCount} 門課程，剩餘 ${afterCount} 門`);
+          addLog('info', `百分比過濾：淘汰了 ${eliminatedCount} 門百分比不匹配的課程`);
+        } else {
+          console.log(`✅ 百分比過濾已應用：沒有課程被淘汰`);
         }
       }
 
@@ -6136,47 +6937,24 @@ ${courseList}
 
       if (finalCourses.length === 0) {
         console.log('❌ Step 2 未找到符合的課程（或全部被排除）');
-
-        // 檢查 step1Courses 是否存在且有內容
-        if (step1Courses && step1Courses.length > 0) {
-          console.log('🔄 回退到 Step 1 的結果');
-          addLog('warning', `Step 2 未找到符合課程，回退到 Step 1 的 ${step1Courses.length} 門課程`);
-
-          // 回退到 Step 1 的結果
-          finalCourses = step1Courses;
-
-          console.log(`✅ 使用 Step 1 結果 - 共 ${finalCourses.length} 門課程:`);
-          finalCourses.slice(0, 20).forEach((c, i) => {
-            const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-            console.log(`  ${i + 1}. ${c.name} | ${c.time} | 路徑:${pathsText || '無'}`);
-          });
-          if (finalCourses.length > 20) {
-            console.log(`  ... 還有 ${finalCourses.length - 20} 門課程未顯示`);
-          }
-        } else {
-          console.log('⚠️ Step 1 結果不可用，無法回退');
-          addLog('error', 'Step 2 失敗且 Step 1 結果不可用');
-          // finalCourses 保持為空數組，將返回 []
-        }
-
-        // 繼續執行，不提前返回
+        addLog('warning', 'Step 2 完成：未找到符合的課程');
+        updateAIProgress('未找到課程', 0);
+        aiThinking.style.display = 'none';
+        const totalSeconds = stopAITimer();
+        addLog('info', `⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
+        return [];
       }
 
-      // 如果 finalCourses 與 step1Courses 相同，說明是回退的結果
-      const isStep1Fallback = (finalCourses === step1Courses);
+      console.log(`✅ Step 2 完成 - 最終匹配 ${finalCourses.length} 門課程:`);
+      addLog('success', `Step 2 完成：精準匹配到 ${finalCourses.length} 門課程`);
 
-      if (!isStep1Fallback) {
-        console.log(`✅ Step 2 完成 - 最終匹配 ${finalCourses.length} 門課程:`);
-        addLog('success', `Step 2 完成：精準匹配到 ${finalCourses.length} 門課程`);
-
-        // 顯示前 20 門課程
-        finalCourses.slice(0, 20).forEach((c, i) => {
-          const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-          console.log(`  ${i + 1}. ${c.name} | ${c.time} | 路徑:${pathsText || '無'} | ${c.cos_type || ''}`);
-        });
-        if (finalCourses.length > 20) {
-          console.log(`  ... 還有 ${finalCourses.length - 20} 門課程未顯示`);
-        }
+      // 顯示前 20 門課程
+      finalCourses.slice(0, 20).forEach((c, i) => {
+        const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
+        console.log(`  ${i + 1}. ${c.name} | ${c.time} | 路徑:${pathsText || '無'} | ${c.cos_type || ''}`);
+      });
+      if (finalCourses.length > 20) {
+        console.log(`  ... 還有 ${finalCourses.length - 20} 門課程未顯示`);
       }
 
       // 檢查是否被中斷
@@ -6191,9 +6969,17 @@ ${courseList}
       // ===== Step 3：評分（獨立步驟）=====
       updateAIProgress('Step 3 進行中 - 評分課程', 75);
       console.log('\n🔍 ===== Step 3：AI 評分（獨立評分步驟）=====');
-      const scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, aiMode);
 
-      // 按分數排序課程
+      let scoreMap = null;
+      try {
+        scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, aiMode, instructions);
+      } catch (error) {
+        console.error('⚠️ Step 3 評分失敗，回退到 Step 2 結果（無分數）:', error);
+        addLog('warning', 'Step 3 評分失敗，返回 Step 2 結果（無分數）');
+        scoreMap = null;
+      }
+
+      // 按分數排序課程（如果評分成功）
       if (scoreMap && scoreMap.size > 0) {
         finalCourses.sort((a, b) => {
           const scoreA = scoreMap.get(a.cos_id || a.code);
@@ -6203,14 +6989,27 @@ ${courseList}
           return totalB - totalA;
         });
 
+        // 過濾掉低於 30 分的課程（視為誤判）
+        const beforeFilterCount = finalCourses.length;
+        finalCourses = finalCourses.filter(course => {
+          const scoreData = scoreMap.get(course.cos_id || course.code);
+          return scoreData && scoreData.total >= 30;
+        });
+        const filteredCount = beforeFilterCount - finalCourses.length;
+        if (filteredCount > 0) {
+          console.log(`🗑️ 過濾掉 ${filteredCount} 門低分課程（< 30 分，視為誤判）`);
+        }
+
         console.log(`✅ Step 3 完成 - 已按分數排序 ${finalCourses.length} 門課程（前10門）:`);
         finalCourses.slice(0, 10).forEach((c, i) => {
           const scoreData = scoreMap.get(c.cos_id || c.code);
           if (scoreData) {
             const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-            console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.time} | 路徑:${pathsText || '無'} (時間:${scoreData.time} 路徑:${scoreData.path} 匹配:${scoreData.match})`);
+            console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.time} | 路徑:${pathsText || '無'} (內容:${scoreData.content} 時間:${scoreData.time} 地點:${scoreData.location} 路徑:${scoreData.path} 匹配:${scoreData.recommend})`);
           }
         });
+      } else {
+        console.log(`⚠️ Step 3 評分失敗或無結果，返回 Step 2 的 ${finalCourses.length} 門課程（無分數）`);
       }
 
       // 隱藏思考動畫並停止計時器
@@ -6971,7 +7770,7 @@ ${outlineContent}
 1. 分析【先修科目】：提取必備的前置知識、技能（如微積分、線性代數、程式設計等）
 2. 分析【課程概述】：提取核心技術術語、概念、主題
 3. 分析【教科書】：提取重要參考書籍、工具、框架名稱
-4. 分析【評量方式】：提取評分相關關鍵詞（如報告、考試、實作、分組專題等）
+4. 分析【評量方式】：提取評分相關關鍵詞**並保留配分占比**（如 midterm 30%、final exam 30%、programming assignments 40%）
 5. 分析【教學方法】：提取教學形式關鍵詞（如翻轉教學、實驗課、線上課程等）
 6. 保留所有專有名詞（演算法名稱、工具名稱、理論名稱、書名等）
 7. 為每個英文關鍵字提供對應的中文翻譯
@@ -6986,7 +7785,7 @@ ${outlineContent}
 評量方式：Midterm exam 30%, Final exam 30%, Programming assignments 40%
 教學方法：Lecture and lab sessions
 
-輸出：Calculus,微積分,Linear Algebra,線性代數,data structures,資料結構,arrays,陣列,linked lists,鏈結串列,stacks,堆疊,queues,佇列,trees,樹,graphs,圖,sorting algorithms,排序演算法,exam,考試,programming assignments,程式作業,實作,lecture,講課,lab,實驗
+輸出：Calculus,微積分,Linear Algebra,線性代數,data structures,資料結構,arrays,陣列,linked lists,鏈結串列,stacks,堆疊,queues,佇列,trees,樹,graphs,圖,sorting algorithms,排序演算法,midterm exam 30%,期中考 30%,final exam 30%,期末考 30%,programming assignments 40%,程式作業 40%,lecture,講課,lab,實驗
 
 現在請為上述完整課程綱要提取中英文關鍵字：`;
     } else {
@@ -7002,7 +7801,7 @@ ${outlineContent}
 1. 分析【先修科目】：提取必備的前置知識、技能（如微積分、線性代數、程式設計等）
 2. 分析【課程概述】：提取核心技術術語、概念、主題
 3. 分析【教科書】：提取重要參考書籍、工具、框架名稱
-4. 分析【評量方式】：提取評分相關關鍵詞（如報告、考試、實作、分組專題等）
+4. 分析【評量方式】：提取評分相關關鍵詞**並保留配分占比**（如 期中考 30%、期末考 30%、程式作業 40%）
 5. 分析【教學方法】：提取教學形式關鍵詞（如翻轉教學、實驗課、線上課程等）
 6. 保留所有專有名詞（演算法名稱、工具名稱、理論名稱、書名、英文專有名詞如 Python、API 等）
 7. 移除冗長描述和連接詞
@@ -7016,7 +7815,7 @@ ${outlineContent}
 評量方式：期中考 30%、期末考 30%、程式作業 40%
 教學方法：課堂講授與實驗課
 
-輸出：微積分,線性代數,資料結構,陣列,鏈結串列,堆疊,佇列,樹狀結構,圖形,排序演算法,Python,實作,期中考,期末考,程式作業,考試,講授,實驗課
+輸出：微積分,線性代數,資料結構,陣列,鏈結串列,堆疊,佇列,樹狀結構,圖形,排序演算法,Python,實作,期中考 30%,期末考 30%,程式作業 40%,考試,講授,實驗課
 
 現在請為上述完整課程綱要提取關鍵字：`;
     }
@@ -7668,7 +8467,25 @@ ${outlineContent}
               }
               addLog('info', `⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
             } else {
-              // AI 沒找到匹配課程，降級到傳統搜尋
+              // AI 沒找到匹配課程
+              // 檢查是否包含百分比查詢（如果是百分比查詢，不要回退到傳統搜尋）
+              const hasPercentageQuery = /\d+%/.test(query);
+
+              if (hasPercentageQuery) {
+                // 百分比查詢不回退，直接顯示空結果
+                console.log('AI 未找到符合百分比要求的課程，不回退到傳統搜尋');
+                addLog('warning', 'AI 未找到符合百分比要求的課程');
+                addLog('info', '提示：傳統搜尋無法精確匹配百分比，已禁用回退');
+                loadingDiv.style.display = 'none';
+                aiThinking.style.display = 'none';
+                const totalSeconds = stopAITimer();
+                console.log(`⏱️ AI 搜尋花費時間：${totalSeconds} 秒`);
+                addLog('info', `⏱️ AI 搜尋花費時間：${totalSeconds} 秒`);
+                displayResults([], totalSeconds);
+                return;
+              }
+
+              // 非百分比查詢，降級到傳統搜尋
               console.log('AI 未找到匹配課程，使用傳統搜尋');
               addLog('info', 'AI 未找到匹配課程，使用傳統搜尋');
               loadingDiv.style.display = 'none';

@@ -62,7 +62,7 @@ h2 {
 }
 
 #keywordStatus {
-  margin-top: -6px;
+  margin-top: -9px;
 }
 
 .search-box {
@@ -3057,22 +3057,57 @@ h2 {
 
 /* ==================== 特殊指令按鈕樣式 ==================== */
 
-.special-commands-bar {
-  font-size: 12px;
-  color: #666;
+.special-commands-container {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
   margin-bottom: 16px;
-  padding: 10px 12px;
-  background: linear-gradient(135deg, #F3E5F5 0%, #FCE4EC 100%);
-  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   border-left: 4px solid #AB47BC;
+  transition: all 0.3s ease;
+}
+
+.special-commands-container:has(.special-commands-sections:not(.collapsed)) {
+  box-shadow: 0 3px 8px rgba(171, 71, 188, 0.15);
+}
+
+.special-commands-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 12px;
+  border-radius: 6px;
   transition: all 0.3s;
+  background: transparent;
+}
+
+.special-commands-header:hover {
+  background: #F9F5FA;
 }
 
 .special-commands-title {
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 8px;
   color: #6A1B9A;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.special-commands-sections {
+  max-height: 500px;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+  margin-top: 12px;
+}
+
+.special-commands-sections.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
 }
 
 .special-commands-buttons {
