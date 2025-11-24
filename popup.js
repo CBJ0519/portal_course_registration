@@ -1783,8 +1783,26 @@ document.addEventListener('DOMContentLoaded', function() {
   // 載入課程詳細資訊快取
   function loadCourseDetailsCache() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['courseDetailsCache'], function(result) {
-        courseDetailsCache = result.courseDetailsCache || {};
+      chrome.storage.local.get(['courseDetailsCache', 'cacheLastUpdate', 'lastUpdate'], function(result) {
+        const courseDataLastUpdate = result.lastUpdate || 0; // 課程資料的更新時間
+        const cacheLastUpdate = result.cacheLastUpdate || 0; // 快取的更新時間
+
+        // 🔧 檢查快取是否過期：如果課程資料比快取新，清除舊快取
+        if (courseDataLastUpdate > cacheLastUpdate) {
+          console.log('🗑️ 課程資料已更新，清除舊的關鍵字快取');
+          console.log(`   課程資料時間：${new Date(courseDataLastUpdate).toLocaleString()}`);
+          console.log(`   快取時間：${new Date(cacheLastUpdate).toLocaleString()}`);
+          courseDetailsCache = {};
+          // 保存空快取並更新快取時間戳
+          chrome.storage.local.set({
+            courseDetailsCache: {},
+            cacheLastUpdate: courseDataLastUpdate
+          });
+        } else {
+          // 快取仍然有效，載入
+          courseDetailsCache = result.courseDetailsCache || {};
+          console.log(`📦 載入關鍵字快取：${Object.keys(courseDetailsCache).length} 門課程`);
+        }
         resolve();
       });
     });
@@ -1792,7 +1810,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 儲存課程詳細資訊快取
   function saveCourseDetailsCache() {
-    chrome.storage.local.set({ courseDetailsCache: courseDetailsCache });
+    // 同時保存快取和當前課程資料的時間戳
+    chrome.storage.local.get(['lastUpdate'], function(result) {
+      chrome.storage.local.set({
+        courseDetailsCache: courseDetailsCache,
+        cacheLastUpdate: result.lastUpdate || Date.now()
+      });
+    });
   }
 
   // ==================== 書籤相關函數 ====================
@@ -4130,8 +4154,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // 清除記憶體中的快取
     courseDetailsCache = {};
 
-    // 清除 storage 中的快取
-    chrome.storage.local.set({ courseDetailsCache: {} }, () => {
+    // 清除 storage 中的快取和時間戳
+    chrome.storage.local.set({
+      courseDetailsCache: {},
+      cacheLastUpdate: 0  // 重置時間戳，強制重新提取
+    }, () => {
       console.log('✅ 關鍵字快取已清除');
       alert('關鍵字快取已清除！\n\n請重新載入擴充功能，系統將自動重新提取所有課程的關鍵字。');
 
