@@ -7834,8 +7834,24 @@ ${outlineContent}
       // 清理結果（移除多餘空白和換行）
       return response.replace(/\n/g, ' ').trim();
     } catch (error) {
+      // 檢查是否為 API 配額錯誤
+      const errorMessage = error.message || String(error);
+      const isQuotaError = errorMessage.includes('429') ||
+                          errorMessage.includes('Resource') ||
+                          errorMessage.includes('exhausted') ||
+                          errorMessage.includes('quota') ||
+                          errorMessage.includes('RESOURCE_EXHAUSTED');
+
+      if (isQuotaError) {
+        // API 配額錯誤，需要向上拋出以便暫停處理
+        const quotaError = new Error('API_QUOTA_EXCEEDED: ' + errorMessage);
+        quotaError.isQuotaError = true;
+        throw quotaError;
+      }
+
+      // 其他錯誤（如超時、網路錯誤），返回原始概述作為後備
       console.warn('AI 提取關鍵字失敗，返回原始概述:', error);
-      return details.課程概述 || ''; // 失敗時返回課程概述作為後備
+      return details.課程概述 || '';
     }
   }
 
@@ -8171,6 +8187,8 @@ ${outlineContent}
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let consecutiveQuotaErrors = 0; // 連續 API 配額錯誤計數
+    const QUOTA_ERROR_THRESHOLD = 3; // 連續 3 次配額錯誤就暫停
 
     // 輔助函數：帶重試的課程資訊獲取
     async function fetchCourseWithRetry(course, maxRetries = 2) {
@@ -8261,7 +8279,14 @@ ${outlineContent}
           return { success: false, course, error: '無課程詳細資訊' };
         }
       } catch (error) {
-        // 🔧 即使失敗也保存空標記，避免重複嘗試失敗的課程
+        // 檢查是否為 API 配額錯誤
+        if (error.isQuotaError) {
+          // 配額錯誤，不保存空標記（之後可以重試）
+          console.error(`🚫 API 配額已用盡: ${course.name} (${course.cos_id})`);
+          return { success: false, course, error: error.message, isQuotaError: true };
+        }
+
+        // 其他錯誤，保存空標記避免重複嘗試失敗的課程
         console.warn(`❌ 處理失敗: ${course.name} (${course.cos_id}) - ${error.message}`);
         courseDetailsCache[courseKey] = { searchKeywords: '' };
         return { success: false, course, error: error.message };
@@ -8300,18 +8325,66 @@ ${outlineContent}
       );
 
       // 統計結果
+      let batchHasQuotaError = false;
       results.forEach(result => {
         if (result.status === 'fulfilled') {
           if (result.value.success) {
             succeeded++;
+            consecutiveQuotaErrors = 0; // 成功則重置計數器
           } else {
             failed++;
+            // 檢查是否為配額錯誤
+            if (result.value.isQuotaError) {
+              consecutiveQuotaErrors++;
+              batchHasQuotaError = true;
+            } else {
+              consecutiveQuotaErrors = 0; // 非配額錯誤則重置計數器
+            }
           }
         } else {
           failed++;
+          consecutiveQuotaErrors = 0; // Promise rejected 視為其他錯誤
         }
         processed++;
       });
+
+      // 檢查是否達到配額錯誤閾值
+      if (consecutiveQuotaErrors >= QUOTA_ERROR_THRESHOLD) {
+        console.error(`🚫 檢測到連續 ${consecutiveQuotaErrors} 次 API 配額錯誤，停止提取`);
+
+        // 顯示錯誤提示
+        if (learningProgress) {
+          learningProgressText.textContent = `❌ API 配額已用盡`;
+          learningProgressText.style.color = '#f44336';
+          learningCounter.textContent = `已處理 ${processed}/${totalCount}`;
+        }
+
+        // 提示使用者
+        alert('⚠️ API 配額已用盡\n\n' +
+              '關鍵字提取已暫停。\n\n' +
+              '可能原因：\n' +
+              '• 未連結帳單帳戶（每分鐘限制 15 次請求）\n' +
+              '• 已達到每日配額限制\n\n' +
+              '解決方法：\n' +
+              '1. 前往設定 → AI 設定查看詳細說明\n' +
+              '2. 連結帳單帳戶以提升額度（1,000 RPM）\n' +
+              '3. 稍後重新開啟擴充功能，系統會自動繼續提取');
+
+        // 保存當前進度
+        saveCourseDetailsCache();
+
+        // 停止提取
+        proactiveExtractionInProgress = false;
+
+        // 5 秒後隱藏進度條
+        setTimeout(() => {
+          if (learningProgress) {
+            learningProgress.style.display = 'none';
+          }
+        }, 5000);
+
+        return; // 跳出循環
+      }
 
       // 💾 批次保存：每處理完一批就保存一次
       saveCourseDetailsCache();
