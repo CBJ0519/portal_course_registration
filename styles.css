@@ -1663,11 +1663,13 @@ h2 {
   border-radius: 8px;
   border: 2px solid #E3F2FD;
   transition: all 0.3s;
+  cursor: pointer;
 }
 
 .slot-course-item:hover {
   border-color: #2196F3;
   box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+  background-color: #F5F5F5;
 }
 
 .slot-course-item-left {

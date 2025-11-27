@@ -3630,7 +3630,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 為加入課表按鈕添加事件
     const addBtns = modal.querySelectorAll('.slot-course-add-btn');
     addBtns.forEach(btn => {
-      btn.addEventListener('click', function() {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 防止觸發父元素的點擊事件
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = availableCourses[courseIndex];
         const courseKey = getCourseKey(course);
@@ -3649,6 +3650,19 @@ document.addEventListener('DOMContentLoaded', function() {
             displayTimetable();
           }
         }
+      });
+    });
+
+    // 為課程卡片添加點擊事件（顯示詳細資訊）
+    const courseItems = modal.querySelectorAll('.slot-course-item');
+    courseItems.forEach(item => {
+      item.addEventListener('click', function() {
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const course = availableCourses[courseIndex];
+        // 關閉當前彈窗
+        document.body.removeChild(overlay);
+        // 顯示詳細資訊
+        showDetailView(course);
       });
     });
   }
