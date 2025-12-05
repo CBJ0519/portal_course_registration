@@ -5505,7 +5505,7 @@ document.addEventListener('DOMContentLoaded', function() {
     useChunking: 'auto',  // 是否使用分塊並行處理（'auto'=自動檢測, true=強制啟用, false=禁用）
     gemini: {
       key: '',
-      model: 'gemini-2.5-flash'
+      model: 'gemini-2.5-flash-lite'
     }
   };
 
@@ -5577,14 +5577,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (result.aiConfig) {
         aiConfig = { ...aiConfig, ...result.aiConfig };
-        // 強制使用 Gemini Flash
+        // 強制使用 Gemini Flash-Lite
         aiConfig.provider = 'gemini';
-        aiConfig.gemini.model = 'gemini-2.5-flash';  // 強制使用 Flash 模型
+        aiConfig.gemini.model = 'gemini-2.5-flash-lite';  // 強制使用 Flash-Lite 模型
 
         // 更新 Gemini UI
         if (aiConfig.gemini) {
           document.getElementById('geminiKey').value = aiConfig.gemini.key || '';
-          document.getElementById('geminiModel').value = 'gemini-2.5-flash';  // 固定顯示 Flash
+          document.getElementById('geminiModel').value = 'gemini-2.5-flash-lite';  // 固定顯示 Flash-Lite
         }
 
         // Gemini settings 永遠顯示（不需要切換）
@@ -5617,13 +5617,13 @@ document.addEventListener('DOMContentLoaded', function() {
   function saveAISettings() {
     aiEnabled = enableAI.checked;
 
-    // 固定使用 Gemini Flash
+    // 固定使用 Gemini Flash-Lite
     aiConfig.provider = 'gemini';
     aiConfig.gemini.key = document.getElementById('geminiKey').value;
-    aiConfig.gemini.model = 'gemini-2.5-flash';  // 固定使用 Flash 模型
+    aiConfig.gemini.model = 'gemini-2.5-flash-lite';  // 固定使用 Flash-Lite 模型
 
     chrome.storage.local.set({ aiEnabled, aiConfig }, () => {
-      console.log('AI 設置已儲存 (Gemini 2.5 Flash):', aiConfig);
+      console.log('AI 設置已儲存 (Gemini 2.5 Flash-Lite):', aiConfig);
 
       // 更新 AI 切換按鈕顯示
       if (aiEnabled) {

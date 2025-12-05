@@ -593,7 +593,7 @@ course_registration/
 
 - **Google Gemini AI API**
   - Base URL: `https://generativelanguage.googleapis.com/`
-  - Model: `gemini-2.5-flash`
+  - Model: `gemini-2.5-flash-lite`
   - 用途：自然語言課程搜尋
 
 ### 核心功能實作
