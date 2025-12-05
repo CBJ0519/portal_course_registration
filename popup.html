@@ -951,10 +951,13 @@
               <div class="setting-item">
                 <label class="setting-label-block">
                   <span>AI 模型</span>
-                  <input type="text" id="geminiModel" class="setting-input" value="gemini-2.5-flash-lite" readonly style="background-color: #f5f5f5; cursor: not-allowed;">
+                  <select id="geminiModel" class="setting-input" style="cursor: pointer;">
+                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（速度最快）</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash（更強大）</option>
+                  </select>
                 </label>
                 <div style="font-size: 12px; color: #666; margin-top: 4px;">
-                  使用 Gemini 2.5 Flash-Lite 模型：速度最快、成本最低
+                  Flash-Lite：速度快、成本低 ｜ Flash：推理能力更強
                 </div>
               </div>
 
