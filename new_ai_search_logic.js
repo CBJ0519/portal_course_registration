@@ -64,11 +64,16 @@
 
         const step0Response = await callAIForKeywordGeneration(step0Prompt, 0.7); // temperature 高一點
 
-        // 解析 JSON
+        // 解析 JSON（加入錯誤處理）
         const jsonMatch = step0Response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const parsedSets = JSON.parse(jsonMatch[0]);
-          attributeSets = { ...attributeSets, ...parsedSets };
+          try {
+            const parsedSets = JSON.parse(jsonMatch[0]);
+            attributeSets = { ...attributeSets, ...parsedSets };
+          } catch (parseError) {
+            console.warn('⚠️ AI 返回的 JSON 格式無效，使用預設關鍵字:', parseError.message);
+            // JSON 解析失敗時，繼續使用預設的空屬性集合
+          }
         }
 
         // 只輸出最終結果

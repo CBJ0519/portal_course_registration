@@ -14,6 +14,9 @@
     </div>
 
     <div class="header-row">
+      <div class="header-left">
+        <button id="reloadBtn" class="reload-btn" title="重新整理介面">🔄</button>
+      </div>
       <h1 id="pageTitle">NYCU 選課助手</h1>
       <div class="header-buttons">
         <button id="reportIssue" class="report-btn" title="回報問題">🐛</button>
@@ -320,7 +323,10 @@
     <div id="bookmarksArea" class="tab-content">
       <div class="bookmarks-header">
         <h2>我的書籤課程</h2>
-        <button id="clearAllBookmarks" class="clear-btn" style="display: none;">🗑️ 清空所有書籤</button>
+        <div class="bookmarks-header-actions">
+          <button id="addCategoryBtn" class="add-category-btn">+ 新增分類</button>
+          <button id="clearAllBookmarks" class="clear-btn" style="display: none;">🗑️ 清空所有書籤</button>
+        </div>
       </div>
       <div id="bookmarksList" class="results">
         <div class="placeholder">
@@ -660,7 +666,12 @@
 
             <h3>管理課表</h3>
             <ul>
-              <li><strong>查看課程資訊</strong>：點擊課表中的課程卡片，快速查看課程詳細資訊（時間、地點、學分、評分方式等）</li>
+              <li><strong>點擊課程</strong>：點擊課表中的課程卡片會彈出選單：
+                <ul style="margin-top: 4px; margin-left: 20px;">
+                  <li>📋 查看課程詳細資料：開啟完整課程資訊</li>
+                  <li>🕐 查看此時段課程：查看該時段所有可選課程</li>
+                </ul>
+              </li>
               <li><strong>切換檢視</strong>：使用「切換為清單模式」按鈕在格子式和清單式之間切換</li>
               <li><strong>顯示週末</strong>：勾選「顯示週六日」查看週末課程</li>
               <li><strong>衝堂處理</strong>：使用 ▲▼ 按鈕切換同時段的不同課程，衝堂課程會以黃色背景標示</li>
@@ -809,7 +820,7 @@
           <h2 class="help-title">❓ 常見問題</h2>
           <div class="help-text">
             <h3>Q: 首次使用需要做什麼？</h3>
-            <p>A: 訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank" class="help-link">https://timetable.nycu.edu.tw/</a>，等待約 5 分鐘自動載入課程資料。</p>
+            <p>A: 首次使用時會自動彈出歡迎引導，說明主要功能。接著只需訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank" class="help-link">https://timetable.nycu.edu.tw/</a>，等待約 5 分鐘自動載入課程資料即可。</p>
 
             <h3>Q: 搜尋不到課程怎麼辦？</h3>
             <p>A: 確認課程資料已載入完成（查看頂部資料狀態提示），或點擊「重新載入課程資料」按鈕更新資料。</p>
@@ -841,6 +852,9 @@
             <h3>Q: 如何查看 AI 搜尋的詳細過程？</h3>
             <p>A: 點擊右上角的 📋 按鈕開啟搜尋日誌，可以看到完整的搜尋過程、關鍵字提取結果、篩選步驟等詳細資訊。</p>
 
+            <h3>Q: 如何關閉彈出的視窗？</h3>
+            <p>A: 除了點擊右上角的 × 按鈕或點擊視窗外的背景，你也可以按 <strong>ESC</strong> 鍵快速關閉任何彈出視窗（包括課程選單、詳細資訊等）。</p>
+
             <h3>Q: 為什麼搜尋「通識」找不到課程？</h3>
             <p>A: 需要啟用 AI 搜尋並使用 {通識} 指令。通識課程在系統中的課程類型顯示為「核心」或「選修」，需要透過選課路徑來識別。{通識} 指令會自動處理這個邏輯。</p>
 
@@ -862,8 +876,8 @@
         </section>
 
         <div class="help-footer">
-          <p>💡 提示：按下快速鍵可快速切換分頁，讓操作更流暢！</p>
-          <p class="help-version">版本 3.0.2 | MIT License</p>
+          <p>💡 提示：使用 ESC 鍵可快速關閉任何彈出視窗！</p>
+          <p class="help-version">版本 3.1.0 | MIT License</p>
         </div>
       </div>
     </div>
@@ -929,6 +943,9 @@
                   <span>Gemini API Key</span>
                   <input type="password" id="geminiKey" class="setting-input" placeholder="AIza...">
                 </label>
+                <div class="api-key-security-note">
+                  🔒 API Key 僅儲存在本機瀏覽器中，不會上傳至任何伺服器
+                </div>
               </div>
 
               <div class="setting-item">

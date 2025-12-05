@@ -128,6 +128,12 @@ async function callOllamaAPI(config, prompt) {
     }
 
     const data = await response.json();
+
+    // 驗證回應結構
+    if (!data || typeof data.response !== 'string') {
+      throw new Error('Ollama API 返回無效結構: 缺少 response 欄位');
+    }
+
     return data.response.trim();
   } catch (error) {
     throw error;
@@ -164,6 +170,15 @@ async function callOpenAIAPI(config, prompt) {
     }
 
     const data = await response.json();
+
+    // 驗證回應結構
+    if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      throw new Error('OpenAI API 返回無效結構: 缺少 choices 陣列');
+    }
+    if (!data.choices[0].message || typeof data.choices[0].message.content !== 'string') {
+      throw new Error('OpenAI API 返回無效結構: 缺少 message.content');
+    }
+
     return data.choices[0].message.content.trim();
   } catch (error) {
     throw error;
@@ -277,6 +292,15 @@ async function callCustomAPI(config, prompt) {
     }
 
     const data = await response.json();
+
+    // 驗證回應結構
+    if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      throw new Error('自定義 API 返回無效結構: 缺少 choices 陣列');
+    }
+    if (!data.choices[0].message || typeof data.choices[0].message.content !== 'string') {
+      throw new Error('自定義 API 返回無效結構: 缺少 message.content');
+    }
+
     return data.choices[0].message.content.trim();
   } catch (error) {
     throw error;

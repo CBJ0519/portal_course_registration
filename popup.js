@@ -381,6 +381,14 @@ document.addEventListener('DOMContentLoaded', function() {
   // 啟動 console 攔截
   interceptConsole();
 
+  // 驗證關鍵 DOM 元素是否存在
+  const requiredElements = ['searchInput', 'searchBtn', 'results', 'dataStatus'];
+  const missingElements = requiredElements.filter(id => !document.getElementById(id));
+  if (missingElements.length > 0) {
+    console.error('❌ 缺少必要的 DOM 元素:', missingElements.join(', '));
+    return; // 提前退出，避免後續錯誤
+  }
+
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
   const refreshBtn = document.getElementById('refreshData');
@@ -429,7 +437,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 篩選器收合狀態（預設收起）
   let filterCollapsed = true;
-  filterSections.classList.add('collapsed');
+  if (filterSections) {
+    filterSections.classList.add('collapsed');
+  }
 
   // AI 搜尋相關元素
   const stopSearchBtn = document.getElementById('stopSearchBtn');
@@ -449,8 +459,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const pageTitle = document.getElementById('pageTitle');
   const tabButtons = document.getElementById('tabButtons');
 
-  // 書籤資料
-  let bookmarks = {};
+  // 書籤資料（支持多分類）
+  let bookmarkCategories = {
+    'default': {
+      name: '我的書籤',
+      icon: '⭐',
+      courses: {}
+    }
+  };
+  let bookmarks = {}; // 保持向後兼容的快速查找 {courseKey: categoryId}
+  let collapsedCategories = {}; // 記錄收合狀態 {categoryId: boolean}
   let currentResults = []; // 保存當前搜尋結果
   let courseDetailsCache = {}; // 快取課程詳細資訊
 
@@ -475,6 +493,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 初始化篩選器選項
   initializeFiltersOnLoad();
+
+  // 檢查是否為首次使用，顯示歡迎引導
+  checkFirstTimeUser();
+
+  // 全域鍵盤事件：ESC 關閉彈窗
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      // 依優先順序關閉彈窗
+      const slotMenu = document.querySelector('.course-slot-menu');
+      if (slotMenu) {
+        slotMenu.remove();
+        return;
+      }
+
+      const modalOverlay = document.querySelector('.course-modal-overlay');
+      if (modalOverlay) {
+        modalOverlay.remove();
+        return;
+      }
+    }
+  });
 
   // 搜尋按鈕事件
   searchBtn.addEventListener('click', function() {
@@ -604,12 +643,22 @@ document.addEventListener('DOMContentLoaded', function() {
   clearAllBookmarks.addEventListener('click', function() {
     if (confirm('確定要清空所有書籤嗎？')) {
       const count = Object.keys(bookmarks).length;
+      // 清空所有分類中的課程
+      for (const categoryId in bookmarkCategories) {
+        bookmarkCategories[categoryId].courses = {};
+      }
       bookmarks = {};
       saveBookmarks();
       displayBookmarks();
       addLog('info', `清空所有書籤 (${count} 門課程)`);
     }
   });
+
+  // 新增分類按鈕
+  const addCategoryBtn = document.getElementById('addCategoryBtn');
+  if (addCategoryBtn) {
+    addCategoryBtn.addEventListener('click', showAddCategoryModal);
+  }
 
   // 清空課表
   clearAllTimetable.addEventListener('click', function() {
@@ -1458,8 +1507,11 @@ document.addEventListener('DOMContentLoaded', function() {
     return matchedCourses.map(item => item.course);
   }
 
-  // 顯示搜尋結果
-  async function displayResults(results, searchTime = null, scoreMap = null) {
+  // 顯示搜尋結果（支援分批載入以提升效能）
+  const RESULTS_PER_PAGE = 100; // 每次顯示的課程數量
+  let currentDisplayCount = RESULTS_PER_PAGE; // 目前顯示的數量
+
+  async function displayResults(results, searchTime = null, scoreMap = null, showAll = false) {
     if (results.length === 0) {
       let noResultsHtml = '<div class="no-results">找不到符合的課程';
       // 如果有篩選器被激活，提示用戶
@@ -1471,15 +1523,27 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    // 重置顯示數量（除非指定顯示全部）
+    if (!showAll) {
+      currentDisplayCount = RESULTS_PER_PAGE;
+    }
+
+    // 決定要顯示的課程數量
+    const displayCount = showAll ? results.length : Math.min(currentDisplayCount, results.length);
+    const hasMore = results.length > displayCount;
+
     // 建立結果標題（顯示結果數量和搜尋時間）
     let headerHtml = '<div class="search-results-header">';
-    headerHtml += `<span class="results-count">找到 ${results.length} 門課程</span>`;
+    headerHtml += `<span class="results-count">找到 ${results.length} 門課程${hasMore ? `（顯示前 ${displayCount} 門）` : ''}</span>`;
     if (searchTime !== null && searchTime > 0) {
       headerHtml += `<span class="search-time">⏱️ ${searchTime} 秒</span>`;
     }
     headerHtml += '</div>';
 
-    const html = results.map((course, index) => {
+    // 只渲染要顯示的課程
+    const displayResults = results.slice(0, displayCount);
+
+    const html = displayResults.map((course, index) => {
       // 獲取分數（精準模式）
       const courseId = course.cos_id || course.code;
       const scoreData = scoreMap && scoreMap.has(courseId) ? scoreMap.get(courseId) : null;
@@ -1586,7 +1650,39 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }).join('');
 
-    resultsDiv.innerHTML = headerHtml + html;
+    // 加入「顯示更多」按鈕（如果有更多結果）
+    let loadMoreHtml = '';
+    if (hasMore) {
+      const remaining = results.length - displayCount;
+      loadMoreHtml = `
+        <div class="load-more-container" style="text-align: center; padding: 16px;">
+          <button id="loadMoreBtn" class="load-more-btn" style="
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+          ">
+            顯示更多課程（還有 ${remaining} 門）
+          </button>
+        </div>
+      `;
+    }
+
+    resultsDiv.innerHTML = headerHtml + html + loadMoreHtml;
+
+    // 為「顯示更多」按鈕添加點擊事件
+    const loadMoreBtn = resultsDiv.querySelector('#loadMoreBtn');
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', function() {
+        currentDisplayCount += RESULTS_PER_PAGE;
+        displayResults(results, searchTime, scoreMap, true);
+      });
+    }
 
     // 為「加入課表」按鈕添加點擊事件
     const addToTimetableBtns = resultsDiv.querySelectorAll('.add-to-timetable-btn');
@@ -1704,17 +1800,96 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.tabs.create({ url: optUrl });
   }
 
+  // 檢查是否為首次使用，顯示歡迎引導
+  function checkFirstTimeUser() {
+    chrome.storage.local.get(['hasSeenWelcome'], function(result) {
+      if (!result.hasSeenWelcome) {
+        showWelcomeGuide();
+      }
+    });
+  }
+
+  // 顯示歡迎引導彈窗
+  function showWelcomeGuide() {
+    const overlay = document.createElement('div');
+    overlay.className = 'course-modal-overlay';
+    overlay.style.zIndex = '10002';
+
+    const modal = document.createElement('div');
+    modal.className = 'course-modal welcome-modal';
+    modal.style.maxWidth = '400px';
+
+    modal.innerHTML = `
+      <div class="course-modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="course-modal-title">
+          <div class="course-modal-name">👋 歡迎使用 NYCU 選課助手</div>
+        </div>
+      </div>
+      <div class="course-modal-body" style="padding: 20px;">
+        <div class="welcome-steps">
+          <div class="welcome-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <div class="step-title">載入課程資料</div>
+              <div class="step-desc">首次使用請訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank">timetable.nycu.edu.tw</a>，系統會自動載入課程資料（約需 5 分鐘）</div>
+            </div>
+          </div>
+          <div class="welcome-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <div class="step-title">搜尋課程</div>
+              <div class="step-desc">輸入課程名稱、教師、時間等關鍵字進行搜尋，支援自然語言查詢</div>
+            </div>
+          </div>
+          <div class="welcome-step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <div class="step-title">建立課表</div>
+              <div class="step-desc">將喜歡的課程加入課表，系統會自動處理時間衝突</div>
+            </div>
+          </div>
+          <div class="welcome-step">
+            <div class="step-number">4</div>
+            <div class="step-content">
+              <div class="step-title">AI 智慧搜尋（選用）</div>
+              <div class="step-desc">在「說明」頁面設定 AI，即可使用自然語言搜尋課程</div>
+            </div>
+          </div>
+        </div>
+        <button class="welcome-start-btn">開始使用</button>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // 點擊開始按鈕
+    modal.querySelector('.welcome-start-btn').addEventListener('click', function() {
+      chrome.storage.local.set({ hasSeenWelcome: true });
+      overlay.remove();
+    });
+
+    // 點擊背景關閉
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        chrome.storage.local.set({ hasSeenWelcome: true });
+        overlay.remove();
+      }
+    });
+  }
+
   // 更新資料狀態顯示
   function updateDataStatus() {
     chrome.storage.local.get(['courseData', 'lastUpdate'], function(result) {
-      if (!result.courseData || result.courseData.length === 0) {
+      if (!result || !result.courseData || !Array.isArray(result.courseData) || result.courseData.length === 0) {
         dataStatusDiv.innerHTML = '<span class="status-warning">⚠️ 尚未載入課程資料，請訪問 <a href="https://timetable.nycu.edu.tw/" target="_blank">timetable.nycu.edu.tw</a></span>';
         dataStatusDiv.style.display = 'block';
         return;
       }
 
       const now = Date.now();
-      const dataAge = now - result.lastUpdate;
+      const lastUpdate = result.lastUpdate || 0;  // 提供預設值避免 NaN
+      const dataAge = now - lastUpdate;
       const daysOld = Math.floor(dataAge / (24 * 60 * 60 * 1000));
       const hoursOld = Math.floor((dataAge % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
       const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -1841,44 +2016,181 @@ document.addEventListener('DOMContentLoaded', function() {
     return course.cos_id || course.code || `${course.name}_${course.teacher}`;
   }
 
+  // 截斷教師名單（超過2位顯示「等」）
+  function truncateTeachers(teacherStr, maxCount = 2) {
+    if (!teacherStr) return '';
+    // 支援多種分隔符號：逗號、頓號、空格
+    const teachers = teacherStr.split(/[,、\s]+/).filter(t => t.trim());
+    if (teachers.length <= maxCount) {
+      return teacherStr;
+    }
+    return teachers.slice(0, maxCount).join('、') + '等';
+  }
+
   // 載入書籤資料
   function loadBookmarks() {
-    chrome.storage.local.get(['courseBookmarks'], function(result) {
-      bookmarks = result.courseBookmarks || {};
+    chrome.storage.local.get(['bookmarkCategories', 'courseBookmarks', 'collapsedCategories'], function(result) {
+      // 優先使用新格式
+      if (result.bookmarkCategories) {
+        bookmarkCategories = result.bookmarkCategories;
+      } else if (result.courseBookmarks) {
+        // 兼容舊格式：將舊書籤轉換到默認分類
+        bookmarkCategories = {
+          'default': {
+            name: '我的書籤',
+            icon: '⭐',
+            courses: result.courseBookmarks
+          }
+        };
+      }
+
+      // 確保默認分類存在
+      if (!bookmarkCategories['default']) {
+        bookmarkCategories['default'] = {
+          name: '我的書籤',
+          icon: '⭐',
+          courses: {}
+        };
+      }
+
+      // 載入收合狀態
+      if (result.collapsedCategories) {
+        collapsedCategories = result.collapsedCategories;
+      }
+
+      // 建立快速查找索引
+      rebuildBookmarksIndex();
       updateBookmarkCount();
     });
+  }
+
+  // 建立書籤快速查找索引
+  function rebuildBookmarksIndex() {
+    bookmarks = {};
+    for (const categoryId in bookmarkCategories) {
+      const category = bookmarkCategories[categoryId];
+      for (const courseKey in category.courses) {
+        bookmarks[courseKey] = categoryId;
+      }
+    }
   }
 
   // 儲存書籤資料
   function saveBookmarks() {
-    chrome.storage.local.set({ courseBookmarks: bookmarks }, function() {
+    chrome.storage.local.set({ bookmarkCategories: bookmarkCategories }, function() {
+      rebuildBookmarksIndex();
       updateBookmarkCount();
     });
   }
 
-  // 切換書籤狀態
-  function toggleBookmark(course) {
+  // 儲存收合狀態
+  function saveCollapsedState() {
+    chrome.storage.local.set({ collapsedCategories: collapsedCategories });
+  }
+
+  // 切換分類收合狀態
+  function toggleCategoryCollapse(categoryId) {
+    collapsedCategories[categoryId] = !collapsedCategories[categoryId];
+    saveCollapsedState();
+  }
+
+  // 切換書籤狀態（加入默認分類或移除）
+  function toggleBookmark(course, categoryId = 'default') {
     const courseKey = getCourseKey(course);
 
     if (bookmarks[courseKey]) {
       // 移除書籤
+      const oldCategoryId = bookmarks[courseKey];
+      if (bookmarkCategories[oldCategoryId]) {
+        delete bookmarkCategories[oldCategoryId].courses[courseKey];
+      }
       delete bookmarks[courseKey];
       addLog('info', `移除書籤：${course.name}`);
     } else {
-      // 加入書籤
-      bookmarks[courseKey] = {
+      // 加入書籤到指定分類
+      if (!bookmarkCategories[categoryId]) {
+        categoryId = 'default';
+      }
+      bookmarkCategories[categoryId].courses[courseKey] = {
         ...course,
-        bookmarkedAt: Date.now() // 記錄加入書籤的時間
+        bookmarkedAt: Date.now()
       };
+      bookmarks[courseKey] = categoryId;
       addLog('success', `加入書籤：${course.name}`);
     }
 
     saveBookmarks();
   }
 
+  // 將課程加入指定分類
+  function addToBookmarkCategory(course, categoryId) {
+    const courseKey = getCourseKey(course);
+
+    // 如果已在其他分類，先移除
+    if (bookmarks[courseKey]) {
+      const oldCategoryId = bookmarks[courseKey];
+      if (bookmarkCategories[oldCategoryId]) {
+        delete bookmarkCategories[oldCategoryId].courses[courseKey];
+      }
+    }
+
+    // 加入新分類
+    if (!bookmarkCategories[categoryId]) {
+      categoryId = 'default';
+    }
+    bookmarkCategories[categoryId].courses[courseKey] = {
+      ...course,
+      bookmarkedAt: Date.now()
+    };
+    bookmarks[courseKey] = categoryId;
+
+    saveBookmarks();
+    addLog('success', `加入「${bookmarkCategories[categoryId].name}」：${course.name}`);
+  }
+
+  // 創建新分類
+  function createBookmarkCategory(name, icon = '📁') {
+    const categoryId = 'cat_' + Date.now();
+    bookmarkCategories[categoryId] = {
+      name: name,
+      icon: icon,
+      courses: {}
+    };
+    saveBookmarks();
+    return categoryId;
+  }
+
+  // 刪除分類（將課程移到默認分類）
+  function deleteBookmarkCategory(categoryId) {
+    if (categoryId === 'default') return; // 不能刪除默認分類
+
+    const category = bookmarkCategories[categoryId];
+    if (category) {
+      // 將課程移到默認分類
+      for (const courseKey in category.courses) {
+        bookmarkCategories['default'].courses[courseKey] = category.courses[courseKey];
+        bookmarks[courseKey] = 'default';
+      }
+      delete bookmarkCategories[categoryId];
+      saveBookmarks();
+    }
+  }
+
+  // 重命名分類
+  function renameBookmarkCategory(categoryId, newName, newIcon) {
+    if (bookmarkCategories[categoryId]) {
+      bookmarkCategories[categoryId].name = newName;
+      if (newIcon) bookmarkCategories[categoryId].icon = newIcon;
+      saveBookmarks();
+    }
+  }
+
   // 更新書籤數量顯示
   function updateBookmarkCount() {
-    const count = Object.keys(bookmarks).length;
+    let count = 0;
+    for (const categoryId in bookmarkCategories) {
+      count += Object.keys(bookmarkCategories[categoryId].courses).length;
+    }
     bookmarkCount.textContent = count;
 
     // 如果有書籤，顯示清空按鈕
@@ -1891,9 +2203,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 顯示書籤列表
   function displayBookmarks() {
-    const bookmarkedCourses = Object.values(bookmarks);
+    const timetableCourses = Object.values(timetable);
 
-    if (bookmarkedCourses.length === 0) {
+    // 計算總書籤數
+    let totalBookmarks = 0;
+    for (const categoryId in bookmarkCategories) {
+      totalBookmarks += Object.keys(bookmarkCategories[categoryId].courses).length;
+    }
+
+    // 如果書籤和課表都是空的
+    if (totalBookmarks === 0 && timetableCourses.length === 0) {
       bookmarksList.innerHTML = `
         <div class="placeholder">
           尚未加入任何書籤<br>
@@ -1905,84 +2224,274 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // 按加入書籤的時間排序（最新的在前）
-    bookmarkedCourses.sort((a, b) => (b.bookmarkedAt || 0) - (a.bookmarkedAt || 0));
+    let fullHtml = '';
 
-    const html = bookmarkedCourses.map((course, index) => {
-      // 建立所有路徑的 HTML（收合在按鈕中）
-      let pathsHtml = '';
-      if (course.paths && Array.isArray(course.paths) && course.paths.length > 0) {
-        pathsHtml = course.paths.map((path, index) => {
-          const pathParts = [];
-          if (path.type) pathParts.push(path.type);
-          if (path.category) pathParts.push(path.category);
-          if (path.college) pathParts.push(path.college);
-          if (path.department) pathParts.push(path.department);
-          pathParts.push('全部');
+    // ========== 已選課程區塊（自動分類）==========
+    if (timetableCourses.length > 0) {
+      const isTimetableCollapsed = collapsedCategories['__timetable__'];
+      const timetableHtml = timetableCourses.map((course, index) => {
+        const courseKey = getCourseKey(course);
+        const isBookmarked = !!bookmarks[courseKey];
 
-          const prefix = course.paths.length > 1 ? `${index + 1}. ` : '📍 ';
-          return `<div class="course-path">${prefix}${pathParts.join(' / ')}</div>`;
-        }).join('');
-      }
-
-      const courseKey = getCourseKey(course);
-
-      // 檢查是否已加入課表
-      const isInTimetable = timetable[courseKey] !== undefined;
-
-      return `
-        <div class="course-item" data-bookmark-index="${index}">
-          <div class="course-header">
-            <div class="course-header-left">
-              <div class="course-code">${course.code}</div>
-              <div class="course-name">${course.name}</div>
+        return `
+          <div class="course-item timetable-course-item" data-timetable-index="${index}">
+            <div class="course-header">
+              <div class="course-header-left">
+                <div class="course-code">${course.code}</div>
+                <div class="course-name">${course.name}</div>
+              </div>
+              <div class="course-actions">
+                <button class="timetable-bookmark-btn ${isBookmarked ? 'bookmarked' : ''}" data-timetable-index="${index}" title="${isBookmarked ? '管理書籤' : '加入書籤'}">
+                  ${isBookmarked ? '★' : '☆'}
+                </button>
+                <button class="timetable-remove-btn" data-timetable-index="${index}" title="從課表移除">
+                  ✕
+                </button>
+              </div>
             </div>
-            <div class="course-actions">
-              <button class="add-to-timetable-btn ${isInTimetable ? 'in-timetable' : ''}" data-bookmark-index="${index}" title="${isInTimetable ? '從課表移除' : '加入課表'}">
-                ${isInTimetable ? '-' : '+'}
+
+            ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
+            ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
+            ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
+            ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+
+            <div class="course-action-buttons">
+              <button class="view-detail-btn timetable-detail-btn" data-timetable-index="${index}">
+                📋 查看完整資訊
               </button>
-              <button class="bookmark-btn bookmarked" data-bookmark-index="${index}" title="移除書籤">
-                ⭐
+              <button class="view-rating-btn timetable-rating-btn" data-timetable-index="${index}" title="在 OPT 歐趴糖查看課程評價">
+                📊 查看歐趴糖評價
               </button>
             </div>
           </div>
+        `;
+      }).join('');
 
-          ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
-          ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
-          ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
-          ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
-
-          <div class="course-action-buttons">
-            <button class="view-detail-btn" data-bookmark-index="${index}">
-              📋 查看完整資訊
-            </button>
-            <button class="view-rating-btn" data-bookmark-index="${index}" title="在 OPT 歐趴糖查看課程評價">
-              📊 查看歐趴糖評價(需登入)
-            </button>
+      fullHtml += `
+        <div class="bookmark-section ${isTimetableCollapsed ? 'collapsed' : ''}" data-category-id="__timetable__">
+          <div class="bookmark-section-header timetable-section-header clickable" data-category-id="__timetable__">
+            <div class="bookmark-section-title-wrapper">
+              <span class="collapse-icon">${isTimetableCollapsed ? '▶' : '▼'}</span>
+              <span class="bookmark-section-title">📅 已選課程</span>
+            </div>
+            <span class="bookmark-section-count">${timetableCourses.length} 門</span>
+          </div>
+          <div class="bookmark-section-list" style="${isTimetableCollapsed ? 'display: none;' : ''}">
+            ${timetableHtml}
           </div>
         </div>
       `;
-    }).join('');
+    }
 
-    bookmarksList.innerHTML = html;
+    // ========== 各書籤分類區塊 ==========
+    // 先顯示默認分類，再顯示其他分類
+    const categoryIds = Object.keys(bookmarkCategories).sort((a, b) => {
+      if (a === 'default') return -1;
+      if (b === 'default') return 1;
+      return 0;
+    });
 
-    // 為「加入課表」按鈕添加點擊事件
+    for (const categoryId of categoryIds) {
+      const category = bookmarkCategories[categoryId];
+      const courses = Object.values(category.courses);
+
+      if (courses.length === 0 && categoryId === 'default') continue; // 默認分類為空時不顯示
+
+      // 按加入時間排序
+      courses.sort((a, b) => (b.bookmarkedAt || 0) - (a.bookmarkedAt || 0));
+
+      const isCollapsed = collapsedCategories[categoryId];
+
+      const coursesHtml = courses.map((course, index) => {
+        const courseKey = getCourseKey(course);
+        const isInTimetable = timetable[courseKey] !== undefined;
+
+        return `
+          <div class="course-item" data-category-id="${categoryId}" data-course-key="${courseKey}">
+            <div class="course-header">
+              <div class="course-header-left">
+                <div class="course-code">${course.code}</div>
+                <div class="course-name">${course.name}</div>
+              </div>
+              <div class="course-actions">
+                <button class="add-to-timetable-btn ${isInTimetable ? 'in-timetable' : ''}" data-category-id="${categoryId}" data-course-key="${courseKey}" title="${isInTimetable ? '從課表移除' : '加入課表'}">
+                  ${isInTimetable ? '-' : '+'}
+                </button>
+                <button class="bookmark-btn bookmarked" data-category-id="${categoryId}" data-course-key="${courseKey}" title="移除書籤">
+                  ★
+                </button>
+              </div>
+            </div>
+
+            ${course.teacher ? `<div class="course-info">👨‍🏫 ${course.teacher}</div>` : ''}
+            ${course.time ? `<div class="course-info">🕐 ${course.time}</div>` : ''}
+            ${course.room ? `<div class="course-info">📍 ${course.room}</div>` : ''}
+            ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
+
+            <div class="course-action-buttons">
+              <button class="view-detail-btn" data-category-id="${categoryId}" data-course-key="${courseKey}">
+                📋 查看完整資訊
+              </button>
+              <button class="view-rating-btn" data-category-id="${categoryId}" data-course-key="${courseKey}" title="在 OPT 歐趴糖查看課程評價">
+                📊 查看歐趴糖評價
+              </button>
+              <button class="move-bookmark-btn" data-category-id="${categoryId}" data-course-key="${courseKey}" title="移動到其他分類">
+                📂 移動
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const isDefaultCategory = categoryId === 'default';
+
+      fullHtml += `
+        <div class="bookmark-section ${isCollapsed ? 'collapsed' : ''}" data-category-id="${categoryId}">
+          <div class="bookmark-section-header clickable" data-category-id="${categoryId}">
+            <div class="bookmark-section-title-wrapper">
+              <span class="collapse-icon">${isCollapsed ? '▶' : '▼'}</span>
+              <span class="bookmark-section-title">${category.icon} ${category.name}</span>
+            </div>
+            <div class="bookmark-section-actions">
+              <span class="bookmark-section-count">${courses.length} 門</span>
+              ${!isDefaultCategory ? `
+                <button class="edit-category-btn" data-category-id="${categoryId}" title="編輯分類">✏️</button>
+                <button class="delete-category-btn" data-category-id="${categoryId}" title="刪除分類">🗑️</button>
+              ` : ''}
+            </div>
+          </div>
+          <div class="bookmark-section-list" style="${isCollapsed ? 'display: none;' : ''}">
+            ${courses.length > 0 ? coursesHtml : '<div class="empty-category-hint">此分類尚無課程</div>'}
+          </div>
+        </div>
+      `;
+    }
+
+    bookmarksList.innerHTML = fullHtml;
+
+    // ========== 綁定事件 ==========
+    bindBookmarkEvents(timetableCourses);
+  }
+
+  // 綁定書籤頁面的事件
+  function bindBookmarkEvents(timetableCourses) {
+    // 收合/展開事件（點擊標題）
+    const sectionHeaders = bookmarksList.querySelectorAll('.bookmark-section-header.clickable');
+    sectionHeaders.forEach(header => {
+      header.addEventListener('click', function(e) {
+        // 如果點擊的是編輯或刪除按鈕，不觸發收合
+        if (e.target.closest('.edit-category-btn') || e.target.closest('.delete-category-btn')) {
+          return;
+        }
+        const categoryId = this.dataset.categoryId;
+        toggleCategoryCollapse(categoryId);
+
+        // 更新 UI
+        const section = this.closest('.bookmark-section');
+        const collapseIcon = this.querySelector('.collapse-icon');
+        const sectionList = section.querySelector('.bookmark-section-list');
+
+        const isNowCollapsed = collapsedCategories[categoryId];
+        section.classList.toggle('collapsed', isNowCollapsed);
+        collapseIcon.textContent = isNowCollapsed ? '▶' : '▼';
+        sectionList.style.display = isNowCollapsed ? 'none' : '';
+      });
+    });
+
+    // 編輯分類按鈕
+    const editCategoryBtns = bookmarksList.querySelectorAll('.edit-category-btn');
+    editCategoryBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const categoryId = this.dataset.categoryId;
+        showEditCategoryModal(categoryId);
+      });
+    });
+
+    // 刪除分類按鈕
+    const deleteCategoryBtns = bookmarksList.querySelectorAll('.delete-category-btn');
+    deleteCategoryBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const categoryId = this.dataset.categoryId;
+        const category = bookmarkCategories[categoryId];
+        const courseCount = Object.keys(category.courses).length;
+        const msg = courseCount > 0
+          ? `確定要刪除「${category.name}」嗎？\n其中的 ${courseCount} 門課程將移到「我的書籤」`
+          : `確定要刪除「${category.name}」嗎？`;
+        if (confirm(msg)) {
+          deleteBookmarkCategory(categoryId);
+          displayBookmarks();
+        }
+      });
+    });
+
+    // 已選課程區塊的事件
+    const timetableBookmarkBtns = bookmarksList.querySelectorAll('.timetable-bookmark-btn');
+    timetableBookmarkBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const timetableIndex = parseInt(this.dataset.timetableIndex);
+        const course = timetableCourses[timetableIndex];
+        const courseKey = getCourseKey(course);
+        if (bookmarks[courseKey]) {
+          toggleBookmark(course);
+          displayBookmarks();
+        } else {
+          showCategorySelectModal(course);
+        }
+      });
+    });
+
+    const timetableRemoveBtns = bookmarksList.querySelectorAll('.timetable-remove-btn');
+    timetableRemoveBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const timetableIndex = parseInt(this.dataset.timetableIndex);
+        const course = timetableCourses[timetableIndex];
+        if (confirm(`確定要從課表移除「${course.name}」嗎？`)) {
+          removeFromTimetable(course);
+          displayBookmarks();
+        }
+      });
+    });
+
+    const timetableDetailBtns = bookmarksList.querySelectorAll('.timetable-detail-btn');
+    timetableDetailBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const timetableIndex = parseInt(this.dataset.timetableIndex);
+        const course = timetableCourses[timetableIndex];
+        showDetailView(course);
+      });
+    });
+
+    const timetableRatingBtns = bookmarksList.querySelectorAll('.timetable-rating-btn');
+    timetableRatingBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const timetableIndex = parseInt(this.dataset.timetableIndex);
+        const course = timetableCourses[timetableIndex];
+        openOPTRating(course);
+      });
+    });
+
+    // 書籤區塊的事件
     const addToTimetableBtns = bookmarksList.querySelectorAll('.add-to-timetable-btn');
     addToTimetableBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const course = bookmarkedCourses[bookmarkIndex];
-        const courseKey = getCourseKey(course);
+        const categoryId = this.dataset.categoryId;
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkCategories[categoryId]?.courses[courseKey];
+        if (!course) return;
 
         if (timetable[courseKey]) {
-          // 課程已在課表中，執行移除
           if (confirm(`確定要從課表移除「${course.name}」嗎？`)) {
             removeFromTimetable(course);
             displayBookmarks();
           }
         } else {
-          // 課程不在課表中，執行加入
           if (addToTimetable(course)) {
             displayBookmarks();
           }
@@ -1990,38 +2499,153 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
 
-    // 為「查看完整資訊」按鈕添加點擊事件
-    const viewDetailBtns = bookmarksList.querySelectorAll('.view-detail-btn');
+    const viewDetailBtns = bookmarksList.querySelectorAll('.view-detail-btn:not(.timetable-detail-btn)');
     viewDetailBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const course = bookmarkedCourses[bookmarkIndex];
-        showDetailView(course);
+        const categoryId = this.dataset.categoryId;
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkCategories[categoryId]?.courses[courseKey];
+        if (course) showDetailView(course);
       });
     });
 
-    // 為書籤按鈕添加點擊事件
     const bookmarkBtns = bookmarksList.querySelectorAll('.bookmark-btn');
     bookmarkBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const course = bookmarkedCourses[bookmarkIndex];
-        toggleBookmark(course);
-        displayBookmarks();
+        const categoryId = this.dataset.categoryId;
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkCategories[categoryId]?.courses[courseKey];
+        if (course) {
+          toggleBookmark(course);
+          displayBookmarks();
+        }
       });
     });
 
-    // 為「查看評價」按鈕添加點擊事件
-    const viewRatingBtns = bookmarksList.querySelectorAll('.view-rating-btn');
+    const viewRatingBtns = bookmarksList.querySelectorAll('.view-rating-btn:not(.timetable-rating-btn)');
     viewRatingBtns.forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const bookmarkIndex = parseInt(this.dataset.bookmarkIndex);
-        const course = bookmarkedCourses[bookmarkIndex];
-        openOPTRating(course);
+        const categoryId = this.dataset.categoryId;
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkCategories[categoryId]?.courses[courseKey];
+        if (course) openOPTRating(course);
       });
+    });
+
+    // 移動書籤按鈕
+    const moveBookmarkBtns = bookmarksList.querySelectorAll('.move-bookmark-btn');
+    moveBookmarkBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const categoryId = this.dataset.categoryId;
+        const courseKey = this.dataset.courseKey;
+        const course = bookmarkCategories[categoryId]?.courses[courseKey];
+        if (course) showCategorySelectModal(course, categoryId);
+      });
+    });
+  }
+
+  // 顯示新增分類彈窗
+  function showAddCategoryModal() {
+    const name = prompt('請輸入分類名稱：');
+    if (name && name.trim()) {
+      const icon = prompt('請輸入分類圖示（留空使用預設）：', '📁') || '📁';
+      createBookmarkCategory(name.trim(), icon);
+      displayBookmarks();
+    }
+  }
+
+  // 顯示編輯分類彈窗
+  function showEditCategoryModal(categoryId) {
+    const category = bookmarkCategories[categoryId];
+    if (!category) return;
+
+    const newName = prompt('請輸入新的分類名稱：', category.name);
+    if (newName && newName.trim()) {
+      const newIcon = prompt('請輸入新的分類圖示：', category.icon) || category.icon;
+      renameBookmarkCategory(categoryId, newName.trim(), newIcon);
+      displayBookmarks();
+    }
+  }
+
+  // 顯示分類選擇彈窗
+  function showCategorySelectModal(course, currentCategoryId = null) {
+    const overlay = document.createElement('div');
+    overlay.className = 'course-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'course-modal category-select-modal';
+
+    let categoriesHtml = '';
+    for (const categoryId in bookmarkCategories) {
+      const category = bookmarkCategories[categoryId];
+      const isCurrentCategory = categoryId === currentCategoryId;
+      categoriesHtml += `
+        <div class="category-select-item ${isCurrentCategory ? 'current' : ''}" data-category-id="${categoryId}">
+          <span class="category-icon">${category.icon}</span>
+          <span class="category-name">${category.name}</span>
+          ${isCurrentCategory ? '<span class="current-badge">目前</span>' : ''}
+        </div>
+      `;
+    }
+
+    modal.innerHTML = `
+      <div class="course-modal-header">
+        <div class="course-modal-title">
+          <div class="course-modal-name">選擇分類</div>
+          <div class="course-modal-subtitle">${course.name}</div>
+        </div>
+        <button class="course-modal-close">×</button>
+      </div>
+      <div class="course-modal-body">
+        <div class="category-select-list">
+          ${categoriesHtml}
+        </div>
+        <div class="category-select-actions">
+          <button class="create-new-category-btn">+ 新增分類</button>
+        </div>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // 關閉按鈕
+    modal.querySelector('.course-modal-close').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+    });
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        document.body.removeChild(overlay);
+      }
+    });
+
+    // 選擇分類
+    modal.querySelectorAll('.category-select-item').forEach(item => {
+      item.addEventListener('click', function() {
+        const targetCategoryId = this.dataset.categoryId;
+        if (targetCategoryId !== currentCategoryId) {
+          addToBookmarkCategory(course, targetCategoryId);
+          displayBookmarks();
+        }
+        document.body.removeChild(overlay);
+      });
+    });
+
+    // 新增分類
+    modal.querySelector('.create-new-category-btn').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+      const name = prompt('請輸入分類名稱：');
+      if (name && name.trim()) {
+        const icon = prompt('請輸入分類圖示（留空使用預設）：', '📁') || '📁';
+        const newCategoryId = createBookmarkCategory(name.trim(), icon);
+        addToBookmarkCategory(course, newCategoryId);
+        displayBookmarks();
+      }
     });
   }
 
@@ -2290,18 +2914,37 @@ document.addEventListener('DOMContentLoaded', function() {
     return 'elective';
   }
 
-  // 計算課表總學分（只計算完整的課程）
+  // 計算課表總學分（只計算完整顯示的課程）
   function calculateTotalCredits() {
     let total = 0;
 
-    // 遍歷所有課表中的課程
     for (const courseKey in timetable) {
       const course = timetable[courseKey];
+      const slots = parseTimeSlots(course.time);
 
-      // 只計算完整顯示的課程
-      if (isCourseFullyDisplayed(course)) {
-        const credits = parseFloat(course.credits) || 0;
-        total += credits;
+      // 無固定時間的課程總是計入學分
+      if (slots.length === 0) {
+        total += parseFloat(course.credits) || 0;
+        continue;
+      }
+
+      // 檢查課程的每個時段是否都被該課程選中顯示
+      let isFullyDisplayed = true;
+      for (const slot of slots) {
+        for (const period of slot.periods) {
+          const slotKey = `${slot.day}-${period}`;
+          // 如果該時段不是顯示這門課，則課程不完整
+          if (selectedCoursesForSlots[slotKey] !== courseKey) {
+            isFullyDisplayed = false;
+            break;
+          }
+        }
+        if (!isFullyDisplayed) break;
+      }
+
+      // 只有完整顯示的課程才計入學分
+      if (isFullyDisplayed) {
+        total += parseFloat(course.credits) || 0;
       }
     }
 
@@ -2407,10 +3050,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 顯示格子式課表
   function displayGridView(courses) {
+    // 保存當前捲動位置
+    const savedScrollLeft = gridViewContainer.scrollLeft;
+    const savedScrollTop = gridViewContainer.scrollTop;
+
     const allDays = ['M', 'T', 'W', 'R', 'F', 'S', 'U'];
     const allDayNames = ['一', '二', '三', '四', '五', '六', '日'];
-    const periods = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'];
-    const periodLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D'];
+    const periods = ['1', '2', '3', '4', 'n', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'];
+    const periodLabels = ['1', '2', '3', '4', 'N', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D'];
 
     // 根據 showWeekend 決定要顯示的天數
     const days = showWeekend ? allDays : allDays.slice(0, 5); // 只顯示週一到週五
@@ -2501,9 +3148,9 @@ document.addEventListener('DOMContentLoaded', function() {
           const incompleteClass = isComplete ? '' : ' incomplete';
 
           html += `
-            <td class="course-slot category-${category}${incompleteClass}" data-course-key="${courseKey}" data-cos-id="${course.cos_id || ''}" style="cursor: pointer;">
+            <td class="course-slot category-${category}${incompleteClass}" data-slot-key="${slotKey}" data-course-key="${courseKey}" data-cos-id="${course.cos_id || ''}" style="cursor: pointer;">
               <div class="slot-course-name">${course.name}</div>
-              ${course.teacher ? `<div class="slot-course-teacher">${course.teacher}</div>` : ''}
+              ${course.teacher ? `<div class="slot-course-teacher">${truncateTeachers(course.teacher)}</div>` : ''}
               <div class="slot-course-room">${course.room || ''}</div>
               <button class="slot-remove-btn" data-course-key="${courseKey}">×</button>
             </td>
@@ -2520,7 +3167,7 @@ document.addEventListener('DOMContentLoaded', function() {
           html += `
             <td class="conflict-slot category-${category}${incompleteClass}" data-slot-key="${slotKey}" data-course-key="${selectedCourseKey}" data-cos-id="${selectedCourse.cos_id || ''}" style="cursor: pointer;">
               <div class="slot-course-name">${selectedCourse.name}</div>
-              ${selectedCourse.teacher ? `<div class="slot-course-teacher">${selectedCourse.teacher}</div>` : ''}
+              ${selectedCourse.teacher ? `<div class="slot-course-teacher">${truncateTeachers(selectedCourse.teacher)}</div>` : ''}
               <div class="slot-course-room">${selectedCourse.room || ''}</div>
               <div class="slot-course-switcher">
                 <button class="course-prev-btn" data-slot-key="${slotKey}" title="上一個課程">▲</button>
@@ -2537,6 +3184,40 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     html += '</tbody></table>';
+
+    // 收集無固定時間的課程
+    const noTimeCourses = courses.filter(course => {
+      const slots = parseTimeSlots(course.time);
+      return slots.length === 0;
+    });
+
+    // 如果有無固定時間的課程，新增獨立區塊
+    if (noTimeCourses.length > 0) {
+      html += `
+        <div class="no-time-courses-section">
+          <div class="no-time-courses-header">
+            <span class="no-time-icon">📌</span>
+            <span class="no-time-title">無固定時間課程</span>
+            <span class="no-time-count">${noTimeCourses.length} 門</span>
+          </div>
+          <div class="no-time-courses-grid">
+            ${noTimeCourses.map(course => {
+              const courseKey = getCourseKey(course);
+              const category = getCourseCategory(course);
+              return `
+                <div class="no-time-course-card course-slot category-${category}" data-course-key="${courseKey}" data-cos-id="${course.cos_id || ''}" style="cursor: pointer;">
+                  <div class="slot-course-name">${course.name}</div>
+                  ${course.teacher ? `<div class="slot-course-teacher">${truncateTeachers(course.teacher)}</div>` : ''}
+                  ${course.credits ? `<div class="slot-course-credits">${course.credits} 學分</div>` : ''}
+                  <button class="no-time-remove-btn" data-course-key="${courseKey}">×</button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     timetableGrid.innerHTML = html;
 
     // 為上一個課程按鈕添加事件
@@ -2650,7 +3331,7 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
 
-    // 為課程卡片添加點擊事件（顯示快速資訊）
+    // 為課程卡片添加點擊事件（顯示選項選單）
     const courseSlots = timetableGrid.querySelectorAll('.course-slot, .conflict-slot');
     courseSlots.forEach(slot => {
       slot.addEventListener('click', function(e) {
@@ -2659,8 +3340,11 @@ document.addEventListener('DOMContentLoaded', function() {
           return;
         }
         const courseKey = this.dataset.courseKey;
+        const slotKey = this.dataset.slotKey;
         const course = timetable[courseKey];
-        if (course) {
+        if (course && slotKey) {
+          showCourseSlotMenu(course, slotKey, e);
+        } else if (course) {
           showCourseModal(course);
         }
       });
@@ -2675,10 +3359,48 @@ document.addEventListener('DOMContentLoaded', function() {
         showSlotCoursesModal(day, period);
       });
     });
+
+    // 為無固定時間課程卡片添加點擊事件
+    const noTimeCards = timetableGrid.querySelectorAll('.no-time-course-card');
+    noTimeCards.forEach(card => {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('button')) {
+          return;
+        }
+        const courseKey = this.dataset.courseKey;
+        const course = timetable[courseKey];
+        if (course) {
+          showCourseModal(course);
+        }
+      });
+    });
+
+    // 為無固定時間課程移除按鈕添加事件
+    const noTimeRemoveBtns = timetableGrid.querySelectorAll('.no-time-remove-btn');
+    noTimeRemoveBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const courseKey = this.dataset.courseKey;
+        const course = timetable[courseKey];
+        if (course && confirm(`確定要從課表移除「${course.name}」嗎？`)) {
+          removeFromTimetable(course);
+          displayTimetable();
+        }
+      });
+    });
+
+    // 恢復捲動位置
+    requestAnimationFrame(() => {
+      gridViewContainer.scrollLeft = savedScrollLeft;
+      gridViewContainer.scrollTop = savedScrollTop;
+    });
   }
 
   // 顯示清單式課表
   function displayListView(courses) {
+    // 保存當前捲動位置
+    const savedScrollTop = listViewContainer.scrollTop;
+
     // 按星期和時間排序課程
     const sortedCourses = courses.sort((a, b) => {
       const slotsA = parseTimeSlots(a.time);
@@ -2736,6 +3458,72 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     });
+
+    // 恢復捲動位置
+    requestAnimationFrame(() => {
+      listViewContainer.scrollTop = savedScrollTop;
+    });
+  }
+
+  // 顯示匯出選項彈窗
+  function showExportOptionsModal() {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'course-modal-overlay';
+
+      const modal = document.createElement('div');
+      modal.className = 'course-modal';
+      modal.style.maxWidth = '320px';
+
+      modal.innerHTML = `
+        <div class="course-modal-header">
+          <div class="course-modal-title">
+            <div class="course-modal-name">匯出課表圖片</div>
+            <div class="course-modal-subtitle">請選擇輸出樣式</div>
+          </div>
+          <button class="course-modal-close">×</button>
+        </div>
+        <div class="course-modal-body" style="padding: 20px;">
+          <div class="export-options">
+            <button class="export-option-btn colorful-option" data-mode="colorful">
+              <span class="option-icon">🎨</span>
+              <span class="option-label">彩色模式</span>
+              <span class="option-desc">保留課程分類顏色</span>
+            </button>
+            <button class="export-option-btn grayscale-option" data-mode="grayscale">
+              <span class="option-icon">🖤</span>
+              <span class="option-label">灰階模式</span>
+              <span class="option-desc">黑白風格，適合列印</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // 關閉按鈕
+      modal.querySelector('.course-modal-close').addEventListener('click', () => {
+        document.body.removeChild(overlay);
+        resolve(null);
+      });
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          document.body.removeChild(overlay);
+          resolve(null);
+        }
+      });
+
+      // 選項按鈕
+      modal.querySelectorAll('.export-option-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const mode = this.dataset.mode;
+          document.body.removeChild(overlay);
+          resolve(mode);
+        });
+      });
+    });
   }
 
   // 匯出課表為圖片
@@ -2755,6 +3543,12 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    // 顯示選項彈窗
+    const exportMode = await showExportOptionsModal();
+    if (!exportMode) return; // 用戶取消
+
+    const isColorful = exportMode === 'colorful';
+
     try {
       // 顯示載入提示
       exportTimetableBtn.disabled = true;
@@ -2766,7 +3560,9 @@ document.addEventListener('DOMContentLoaded', function() {
         width: 1240px;
         height: 1754px;
         padding: 40px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: ${isColorful
+          ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+          : 'linear-gradient(135deg, #4a4a4a 0%, #2d2d2d 100%)'};
         font-family: 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         border-radius: 16px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.15);
@@ -2790,23 +3586,33 @@ document.addEventListener('DOMContentLoaded', function() {
       const header = document.createElement('div');
       header.style.cssText = `
         text-align: center;
-        margin-bottom: 24px;
-        padding-bottom: 20px;
-        border-bottom: 3px solid #667eea;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid ${isColorful ? '#667eea' : '#333'};
       `;
 
       // 主標題
       const title = document.createElement('div');
-      title.style.cssText = `
-        font-size: 32px;
-        font-weight: 900;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 8px;
-        letter-spacing: 1px;
-      `;
+      if (isColorful) {
+        title.style.cssText = `
+          font-size: 26px;
+          font-weight: 900;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          margin-bottom: 6px;
+          letter-spacing: 1px;
+        `;
+      } else {
+        title.style.cssText = `
+          font-size: 26px;
+          font-weight: 900;
+          color: #000;
+          margin-bottom: 6px;
+          letter-spacing: 1px;
+        `;
+      }
       title.textContent = 'NYCU 課表';
       header.appendChild(title);
 
@@ -2818,28 +3624,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const creditInfo = document.createElement('div');
       creditInfo.style.cssText = `
-        font-size: 15px;
+        font-size: 13px;
         color: #666;
         display: flex;
         justify-content: center;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
         flex-wrap: wrap;
       `;
-      creditInfo.innerHTML = `
-        <span style="background: #E8F5E9; color: #2E7D32; padding: 6px 16px; border-radius: 20px; font-weight: 600;">
-          📚 總學分：${totalCredits}
-        </span>
-        <span style="background: #E3F2FD; color: #1565C0; padding: 6px 16px; border-radius: 20px; font-weight: 600;">
-          📅 ${dateStr}
-        </span>
-      `;
+      if (isColorful) {
+        creditInfo.innerHTML = `
+          <span style="background: #E8F5E9; color: #2E7D32; padding: 4px 12px; border-radius: 16px; font-weight: 600; font-size: 12px;">
+            📚 總學分：${totalCredits}
+          </span>
+          <span style="background: #E3F2FD; color: #1565C0; padding: 4px 12px; border-radius: 16px; font-weight: 600; font-size: 12px;">
+            📅 ${dateStr}
+          </span>
+        `;
+      } else {
+        creditInfo.innerHTML = `
+          <span style="background: #f0f0f0; color: #333; padding: 4px 12px; border-radius: 16px; font-weight: 600; font-size: 12px;">
+            📚 總學分：${totalCredits}
+          </span>
+          <span style="background: #e8e8e8; color: #333; padding: 4px 12px; border-radius: 16px; font-weight: 600; font-size: 12px;">
+            📅 ${dateStr}
+          </span>
+        `;
+      }
       header.appendChild(creditInfo);
 
       contentWrapper.appendChild(header);
 
       // 克隆課表內容
       const clonedElement = elementToCapture.cloneNode(true);
+
+      // 移除無固定時間課程區塊（匯出時不顯示）
+      const noTimeSectionToRemove = clonedElement.querySelector('.no-time-courses-section');
+      if (noTimeSectionToRemove) {
+        noTimeSectionToRemove.remove();
+      }
 
       // 設定課表區域樣式以適應 A4 (滿版顯示)
       clonedElement.style.cssText = `
@@ -2852,42 +3675,125 @@ document.addEventListener('DOMContentLoaded', function() {
       // 如果是格子式課表，調整表格樣式以填滿頁面
       const table = clonedElement.querySelector('table');
       if (table) {
+        // 自動移除前後沒有課程的節次
+        const tbody = table.querySelector('tbody');
+        if (tbody) {
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+
+          // 找出有課程的行範圍
+          let firstRowWithCourse = -1;
+          let lastRowWithCourse = -1;
+
+          rows.forEach((row, index) => {
+            const hasCourse = row.querySelector('.course-slot, .conflict-slot') !== null;
+            if (hasCourse) {
+              if (firstRowWithCourse === -1) firstRowWithCourse = index;
+              lastRowWithCourse = index;
+            }
+          });
+
+          // 如果有課程，移除前後空白的行
+          if (firstRowWithCourse !== -1) {
+            // 從後往前移除，避免索引變化問題
+            for (let i = rows.length - 1; i > lastRowWithCourse; i--) {
+              rows[i].remove();
+            }
+            for (let i = firstRowWithCourse - 1; i >= 0; i--) {
+              rows[i].remove();
+            }
+          }
+
+          // 移除沒有課程的 N 節（午餐時段）
+          const remainingRowsAfterTrim = Array.from(tbody.querySelectorAll('tr'));
+          remainingRowsAfterTrim.forEach(row => {
+            const periodLabel = row.querySelector('.period-label');
+            if (periodLabel && periodLabel.textContent.trim() === 'N') {
+              const hasCourse = row.querySelector('.course-slot, .conflict-slot') !== null;
+              if (!hasCourse) {
+                row.remove();
+              }
+            }
+          });
+        }
+
         table.style.width = '100%';
         table.style.height = '100%';
         table.style.minWidth = 'unset';
         table.style.fontSize = '16px';
+        table.style.tableLayout = 'fixed';
+        table.style.borderCollapse = 'separate';
+        table.style.borderSpacing = '4px';
 
-        // 增加格子的高度
-        const slots = clonedElement.querySelectorAll('.course-slot, .conflict-slot, .empty-slot');
-        slots.forEach(slot => {
-          slot.style.minHeight = '90px';
-          slot.style.padding = '12px';
+        // 計算並設定每列的固定寬度
+        const headerCells = table.querySelectorAll('thead th');
+        const totalColumns = headerCells.length;
+        const periodColumnWidth = '60px';
+        const dayColumnWidth = `${(100 - 6) / (totalColumns - 1)}%`;
+
+        headerCells.forEach((th, index) => {
+          if (index === 0) {
+            th.style.width = periodColumnWidth;
+          } else {
+            th.style.width = dayColumnWidth;
+          }
         });
 
-        // 增加字體大小，使用深色文字（高對比）
+        // 動態調整格子高度
+        const remainingRows = table.querySelectorAll('tbody tr').length;
+        const slotHeight = remainingRows <= 5 ? '120px' : remainingRows <= 7 ? '100px' : remainingRows <= 10 ? '85px' : '72px';
+        const slotPadding = remainingRows <= 5 ? '14px' : remainingRows <= 7 ? '12px' : remainingRows <= 10 ? '10px' : '8px';
+
+        const slots = clonedElement.querySelectorAll('.course-slot, .conflict-slot, .empty-slot');
+        slots.forEach(slot => {
+          slot.style.minHeight = slotHeight;
+          slot.style.height = slotHeight;
+          slot.style.padding = slotPadding;
+          slot.style.boxSizing = 'border-box';
+          slot.style.overflow = 'hidden';
+        });
+
+        // 設定 period-label 的樣式
+        const periodLabels = clonedElement.querySelectorAll('.period-label');
+        periodLabels.forEach(label => {
+          label.style.width = periodColumnWidth;
+          label.style.height = slotHeight;
+          label.style.boxSizing = 'border-box';
+        });
+
+        // 動態調整字體大小
+        const nameFontSize = remainingRows <= 5 ? '18px' : remainingRows <= 7 ? '16px' : remainingRows <= 10 ? '15px' : '14px';
+        const infoFontSize = remainingRows <= 5 ? '15px' : remainingRows <= 7 ? '14px' : remainingRows <= 10 ? '13px' : '12px';
+        const headerFontSize = remainingRows <= 5 ? '18px' : remainingRows <= 7 ? '17px' : remainingRows <= 10 ? '16px' : '15px';
+
         const names = clonedElement.querySelectorAll('.slot-course-name');
         names.forEach(name => {
-          name.style.fontSize = '16px';
-          name.style.fontWeight = '800';
-          name.style.marginBottom = '4px';
-          name.style.setProperty('color', '#000', 'important');
+          name.style.fontSize = nameFontSize;
+          name.style.fontWeight = '700';
+          name.style.marginBottom = '2px';
+          // 彩色模式保留原色，灰階模式使用黑色
+          if (!isColorful) {
+            name.style.setProperty('color', '#000', 'important');
+          }
           name.style.textShadow = 'none';
         });
 
         const infos = clonedElement.querySelectorAll('.slot-course-teacher, .slot-course-room');
         infos.forEach(info => {
-          info.style.fontSize = '14px';
-          info.style.marginBottom = '3px';
-          info.style.setProperty('color', '#222', 'important');
-          info.style.fontWeight = '600';
+          info.style.fontSize = infoFontSize;
+          info.style.marginBottom = '2px';
+          // 彩色模式保留原色，灰階模式使用深灰色
+          if (!isColorful) {
+            info.style.setProperty('color', '#222', 'important');
+          }
+          info.style.fontWeight = '500';
         });
 
-        // 增加標題字體，保持原色但文字加粗
+        // 調整標題字體
         const headers = clonedElement.querySelectorAll('th');
         headers.forEach(header => {
-          header.style.fontSize = '18px';
-          header.style.padding = '16px 12px';
-          header.style.fontWeight = '800';
+          header.style.fontSize = headerFontSize;
+          header.style.padding = '10px 8px';
+          header.style.fontWeight = '700';
         });
       }
 
@@ -2917,6 +3823,48 @@ document.addEventListener('DOMContentLoaded', function() {
       // 移除 incomplete 類別（匯出時顯示所有課程為正常樣式）
       const incompleteCourses = clonedElement.querySelectorAll('.incomplete');
       incompleteCourses.forEach(course => course.classList.remove('incomplete'));
+
+      // 灰階模式：將所有彩色課程格子轉為灰色
+      if (!isColorful) {
+        const courseSlots = clonedElement.querySelectorAll('.course-slot, .conflict-slot');
+        courseSlots.forEach(slot => {
+          // 移除所有 category-* 類別（這些類別用 !important 設定顏色）
+          const classesToRemove = [];
+          slot.classList.forEach(cls => {
+            if (cls.startsWith('category-')) {
+              classesToRemove.push(cls);
+            }
+          });
+          classesToRemove.forEach(cls => slot.classList.remove(cls));
+
+          // 設定灰色背景
+          slot.style.setProperty('background', 'linear-gradient(135deg, #e0e0e0 0%, #c0c0c0 100%)', 'important');
+          slot.style.setProperty('box-shadow', '0 2px 4px rgba(0, 0, 0, 0.1)', 'important');
+        });
+
+        // 列表式課程也轉為灰色
+        const listItems = clonedElement.querySelectorAll('.list-course-item');
+        listItems.forEach(item => {
+          // 移除 category-* 類別
+          const classesToRemove = [];
+          item.classList.forEach(cls => {
+            if (cls.startsWith('category-')) {
+              classesToRemove.push(cls);
+            }
+          });
+          classesToRemove.forEach(cls => item.classList.remove(cls));
+
+          item.style.setProperty('background', '#f5f5f5', 'important');
+          item.style.setProperty('border-left-color', '#666', 'important');
+        });
+
+        // 表頭也轉為灰色
+        const headers = clonedElement.querySelectorAll('th');
+        headers.forEach(header => {
+          header.style.setProperty('background', 'linear-gradient(135deg, #555 0%, #333 100%)', 'important');
+          header.style.setProperty('color', '#fff', 'important');
+        });
+      }
 
       contentWrapper.appendChild(clonedElement);
 
@@ -2969,7 +3917,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     } catch (error) {
       console.error('匯出圖片失敗:', error);
-      alert('匯出圖片失敗，請稍後再試');
+      const errorMsg = error.message || '';
+      let userMessage = '匯出圖片失敗';
+      if (errorMsg.includes('canvas') || errorMsg.includes('html2canvas')) {
+        userMessage += '：畫布渲染失敗，請重新整理頁面後再試';
+      } else if (errorMsg.includes('memory') || errorMsg.includes('Memory')) {
+        userMessage += '：記憶體不足，請關閉其他分頁後再試';
+      } else {
+        userMessage += '，請稍後再試';
+      }
+      alert(userMessage);
 
       // 恢復按鈕狀態
       exportTimetableBtn.disabled = false;
@@ -3159,9 +4116,11 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('查找最新課程資料失敗:', error);
     }
 
-    // 隱藏列表頁面
+    // 隱藏列表頁面（包含所有區域）
     searchArea.style.display = 'none';
     bookmarksArea.style.display = 'none';
+    timetableArea.classList.remove('active');
+    helpArea.classList.remove('active');
     tabButtons.style.display = 'none';
     dataStatusDiv.style.display = 'none';
 
@@ -3273,15 +4232,29 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
 
+    // 構建 memo HTML
+    let memoHtml = '';
+    if (updatedCourse.memo && updatedCourse.memo.trim()) {
+      memoHtml = `
+        <div class="detail-section">
+          <h2 class="detail-section-title">📝 備註</h2>
+          <div class="detail-memo-content">${updatedCourse.memo}</div>
+        </div>
+      `;
+    }
+
     // 組合完整內容
     detailPageContent.innerHTML = `
       <div class="detail-page-header">
-        <div class="detail-course-code">${course.code}</div>
-        <div class="detail-course-name">${course.name}</div>
-        ${course.teacher ? `<div class="detail-course-info">👨‍🏫 授課教師：${course.teacher}</div>` : ''}
-        ${course.credits ? `<div class="detail-course-info">📚 學分：${course.credits}</div>` : ''}
+        <div class="detail-course-code">${updatedCourse.code}</div>
+        <div class="detail-course-name">${updatedCourse.name}</div>
+        ${updatedCourse.teacher ? `<div class="detail-course-info">👨‍🏫 授課教師：${updatedCourse.teacher}</div>` : ''}
+        ${updatedCourse.credits ? `<div class="detail-course-info">📚 學分：${updatedCourse.credits}</div>` : ''}
+        ${updatedCourse.time ? `<div class="detail-course-info">🕐 時間：${updatedCourse.time}</div>` : ''}
+        ${updatedCourse.room ? `<div class="detail-course-info">📍 教室：${updatedCourse.room}</div>` : ''}
       </div>
 
+      ${memoHtml}
       ${pathsHtml}
       ${detailsHtml}
 
@@ -3354,17 +4327,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // 隱藏詳細頁面
     detailPage.style.display = 'none';
     backButton.style.display = 'none';
-    pageTitle.textContent = 'NYCU 選課助手';
 
     // 顯示列表頁面
     tabButtons.style.display = 'flex';
     dataStatusDiv.style.display = 'block';
 
     // 恢復到之前的分頁
-    if (searchTab.classList.contains('active')) {
-      searchArea.style.display = 'block';
-    } else {
+    if (timetableTab.classList.contains('active')) {
+      timetableArea.classList.add('active');
+      pageTitle.textContent = '我的課表';
+    } else if (helpTab.classList.contains('active')) {
+      helpArea.classList.add('active');
+      pageTitle.textContent = '使用說明';
+    } else if (bookmarksTab.classList.contains('active')) {
       bookmarksArea.style.display = 'block';
+      pageTitle.textContent = '收藏清單';
+    } else {
+      searchArea.style.display = 'block';
+      pageTitle.textContent = 'NYCU 選課助手';
     }
   }
 
@@ -3527,7 +4507,83 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== 課程快速資訊彈窗 ====================
 
-  // 顯示課程快速資訊彈窗
+  // 顯示課程格子選項選單
+  function showCourseSlotMenu(course, slotKey, event) {
+    // 移除已存在的選單
+    const existingMenu = document.querySelector('.course-slot-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    // 解析 slotKey 獲取 day 和 period
+    const [day, period] = slotKey.split('-');
+
+    // 創建選單
+    const menu = document.createElement('div');
+    menu.className = 'course-slot-menu';
+    menu.innerHTML = `
+      <div class="course-slot-menu-item" data-action="details">
+        <span class="menu-icon">📋</span>
+        <span>查看課程詳細資料</span>
+      </div>
+      <div class="course-slot-menu-item" data-action="slot">
+        <span class="menu-icon">🕐</span>
+        <span>查看此時段課程</span>
+      </div>
+    `;
+
+    // 設置位置
+    const rect = event.target.closest('td').getBoundingClientRect();
+    const containerRect = document.body.getBoundingClientRect();
+
+    menu.style.position = 'fixed';
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.zIndex = '10001';
+
+    // 添加到頁面
+    document.body.appendChild(menu);
+
+    // 確保選單不超出視窗
+    requestAnimationFrame(() => {
+      const menuRect = menu.getBoundingClientRect();
+      if (menuRect.right > window.innerWidth) {
+        menu.style.left = `${window.innerWidth - menuRect.width - 10}px`;
+      }
+      if (menuRect.bottom > window.innerHeight) {
+        menu.style.top = `${rect.top - menuRect.height - 4}px`;
+      }
+    });
+
+    // 處理選單項目點擊
+    menu.querySelectorAll('.course-slot-menu-item').forEach(item => {
+      item.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const action = this.dataset.action;
+        menu.remove();
+
+        if (action === 'details') {
+          showCourseModal(course);
+        } else if (action === 'slot') {
+          showSlotCoursesModal(day, period);
+        }
+      });
+    });
+
+    // 點擊其他地方關閉選單
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+
+    // 延遲添加監聽器，避免立即觸發
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+    }, 0);
+  }
+
   // 顯示時段可選課程彈窗
   async function showSlotCoursesModal(day, period) {
     // 取得所有課程資料
@@ -3566,7 +4622,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const modal = document.createElement('div');
     modal.className = 'course-modal slot-courses-modal';
 
-    // 彈窗內容
+    // 彈窗內容 - 列表視圖
     let coursesHTML = '';
     if (availableCourses.length === 0) {
       coursesHTML = '<div class="no-courses-hint">此時段沒有可選課程</div>';
@@ -3577,8 +4633,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const isInTimetable = !!timetable[courseKey];
         const category = getCourseCategory(course);
 
+        const isBookmarked = !!bookmarks[courseKey];
         coursesHTML += `
           <div class="slot-course-item category-${category}" data-course-index="${index}">
+            <button class="slot-bookmark-btn ${isBookmarked ? 'bookmarked' : ''}" data-course-index="${index}" title="${isBookmarked ? '移除書籤' : '加入書籤'}">
+              ${isBookmarked ? '★' : '☆'}
+            </button>
             <div class="slot-course-item-left">
               <div class="course-code">${course.code}</div>
               <div class="course-name">${course.name}</div>
@@ -3588,6 +4648,9 @@ document.addEventListener('DOMContentLoaded', function() {
               ${course.credits ? `<div class="course-info">📚 ${course.credits} 學分</div>` : ''}
             </div>
             <div class="slot-course-item-right">
+              <button class="slot-course-rating-btn" data-course-index="${index}" title="在 OPT 歐趴糖查看課程評價">
+                📊 歐趴糖
+              </button>
               <button class="slot-course-add-btn ${isInTimetable ? 'in-timetable' : ''}" data-course-index="${index}">
                 ${isInTimetable ? '✓ 已加入' : '+ 加入課表'}
               </button>
@@ -3600,22 +4663,187 @@ document.addEventListener('DOMContentLoaded', function() {
 
     modal.innerHTML = `
       <div class="course-modal-header">
+        <button class="course-modal-back" style="display: none;">←</button>
         <div class="course-modal-title">
           <div class="course-modal-name">週${dayName} 第${period}節 可選課程</div>
           <div class="course-modal-subtitle">共 ${availableCourses.length} 門課程</div>
         </div>
         <button class="course-modal-close">×</button>
       </div>
+      <div class="slot-search-box">
+        <input type="text" class="slot-search-input" placeholder="搜尋課程名稱、代碼、教師...">
+        <button class="slot-filter-toggle-btn" title="進階篩選">
+          <span class="filter-icon">⚙</span>
+          <span class="filter-text">篩選</span>
+        </button>
+        <span class="slot-search-count"></span>
+      </div>
+      <div class="slot-filter-panel" style="display: none;">
+        <div class="slot-filter-sections">
+          <div class="slot-filter-section">
+            <div class="slot-filter-title">課程類型</div>
+            <div class="slot-filter-options">
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-type" value="required"><span>必修</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-type" value="elective"><span>選修</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-type" value="general"><span>通識</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-type" value="physical"><span>體育</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-type" value="language"><span>外語</span></label>
+            </div>
+          </div>
+          <div class="slot-filter-section">
+            <div class="slot-filter-title">學分數</div>
+            <div class="slot-filter-options">
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-credits" value="0"><span>0</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-credits" value="1"><span>1</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-credits" value="2"><span>2</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-credits" value="3"><span>3</span></label>
+              <label class="slot-filter-checkbox"><input type="checkbox" class="slot-filter-credits" value="4+"><span>4+</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="slot-filter-actions">
+          <button class="slot-filter-clear-btn">清除篩選</button>
+        </div>
+      </div>
       <div class="course-modal-body">
-        ${coursesHTML}
+        <div class="slot-list-view">
+          ${coursesHTML}
+        </div>
+        <div class="slot-detail-view" style="display: none;">
+        </div>
       </div>
     `;
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    // 關閉按鈕事件
+    // 取得元素
+    const backBtn = modal.querySelector('.course-modal-back');
     const closeBtn = modal.querySelector('.course-modal-close');
+    const modalTitle = modal.querySelector('.course-modal-title');
+    const listView = modal.querySelector('.slot-list-view');
+    const detailView = modal.querySelector('.slot-detail-view');
+    const searchInput = modal.querySelector('.slot-search-input');
+    const searchCount = modal.querySelector('.slot-search-count');
+    const searchBox = modal.querySelector('.slot-search-box');
+    const filterToggleBtn = modal.querySelector('.slot-filter-toggle-btn');
+    const filterPanel = modal.querySelector('.slot-filter-panel');
+    const filterClearBtn = modal.querySelector('.slot-filter-clear-btn');
+
+    // 記錄列表滾動位置和當前課程索引
+    let lastScrollPosition = 0;
+    let lastCourseIndex = 0;
+
+    // 取得當前篩選條件
+    function getFilterConditions() {
+      const typeFilters = Array.from(modal.querySelectorAll('.slot-filter-type:checked')).map(cb => cb.value);
+      const creditFilters = Array.from(modal.querySelectorAll('.slot-filter-credits:checked')).map(cb => cb.value);
+      return { types: typeFilters, credits: creditFilters };
+    }
+
+    // 檢查課程是否符合篩選條件
+    function matchesFilters(course, filters) {
+      // 課程類型篩選
+      if (filters.types.length > 0) {
+        const category = getCourseCategory(course);
+        if (!filters.types.includes(category)) {
+          return false;
+        }
+      }
+
+      // 學分數篩選
+      if (filters.credits.length > 0) {
+        const credits = parseInt(course.credits) || 0;
+        let creditMatch = false;
+        for (const filter of filters.credits) {
+          if (filter === '4+') {
+            if (credits >= 4) creditMatch = true;
+          } else {
+            if (credits === parseInt(filter)) creditMatch = true;
+          }
+        }
+        if (!creditMatch) return false;
+      }
+
+      return true;
+    }
+
+    // 搜尋過濾功能（結合關鍵字和進階篩選）
+    function filterCourses() {
+      const items = listView.querySelectorAll('.slot-course-item');
+      const lowerKeyword = searchInput.value.toLowerCase().trim();
+      const filters = getFilterConditions();
+      const hasFilters = filters.types.length > 0 || filters.credits.length > 0;
+      let visibleCount = 0;
+
+      items.forEach((item, index) => {
+        const course = availableCourses[index];
+        let show = true;
+
+        // 關鍵字篩選
+        if (lowerKeyword) {
+          const searchText = [
+            course.name || '',
+            course.code || '',
+            course.teacher || '',
+            course.room || '',
+            course.dep_name || ''
+          ].join(' ').toLowerCase();
+          if (!searchText.includes(lowerKeyword)) {
+            show = false;
+          }
+        }
+
+        // 進階篩選
+        if (show && hasFilters) {
+          if (!matchesFilters(course, filters)) {
+            show = false;
+          }
+        }
+
+        item.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+      });
+
+      // 更新搜尋結果計數
+      if (lowerKeyword || hasFilters) {
+        searchCount.textContent = `${visibleCount} / ${availableCourses.length}`;
+      } else {
+        searchCount.textContent = '';
+      }
+
+      // 更新篩選按鈕狀態
+      filterToggleBtn.classList.toggle('active', hasFilters);
+    }
+
+    // 篩選面板切換
+    filterToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = filterPanel.style.display !== 'none';
+      filterPanel.style.display = isVisible ? 'none' : 'block';
+      filterToggleBtn.classList.toggle('expanded', !isVisible);
+    });
+
+    // 清除篩選
+    filterClearBtn.addEventListener('click', () => {
+      modal.querySelectorAll('.slot-filter-type, .slot-filter-credits').forEach(cb => {
+        cb.checked = false;
+      });
+      filterCourses();
+    });
+
+    // 篩選選項變更事件
+    modal.querySelectorAll('.slot-filter-type, .slot-filter-credits').forEach(cb => {
+      cb.addEventListener('change', filterCourses);
+    });
+
+    // 搜尋框事件
+    searchInput.addEventListener('input', filterCourses);
+
+    // 防止搜尋框點擊事件冒泡
+    searchInput.addEventListener('click', (e) => e.stopPropagation());
+
+    // 關閉按鈕事件
     closeBtn.addEventListener('click', () => {
       document.body.removeChild(overlay);
     });
@@ -3625,6 +4853,248 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.target === overlay) {
         document.body.removeChild(overlay);
       }
+    });
+
+    // 返回按鈕事件
+    backBtn.addEventListener('click', () => {
+      // 切換回列表視圖
+      detailView.style.display = 'none';
+      listView.style.display = 'block';
+      searchBox.style.display = 'flex';
+      backBtn.style.display = 'none';
+      modalTitle.innerHTML = `
+        <div class="course-modal-name">週${dayName} 第${period}節 可選課程</div>
+        <div class="course-modal-subtitle">共 ${availableCourses.length} 門課程</div>
+      `;
+
+      // 恢復滾動位置到課程卡片
+      setTimeout(() => {
+        const targetItem = listView.querySelector(`[data-course-index="${lastCourseIndex}"]`);
+        if (targetItem) {
+          targetItem.scrollIntoView({ behavior: 'auto', block: 'center' });
+        }
+      }, 0);
+    });
+
+    // 顯示詳細資訊的函數
+    async function showDetailInModal(course, courseIndex) {
+      // 記錄當前位置
+      lastCourseIndex = courseIndex;
+
+      // 切換到詳細視圖
+      listView.style.display = 'none';
+      detailView.style.display = 'block';
+      searchBox.style.display = 'none';
+      filterPanel.style.display = 'none';
+      filterToggleBtn.classList.remove('expanded');
+      backBtn.style.display = 'block';
+      modalTitle.innerHTML = `
+        <div class="course-modal-name">${course.name}</div>
+        <div class="course-modal-subtitle">${course.code}</div>
+      `;
+
+      // 顯示載入中
+      detailView.innerHTML = '<div class="details-loading">載入中...</div>';
+
+      // 從最新的 courseData 中查找課程資料
+      let updatedCourse = course;
+      try {
+        if (result.courseData && Array.isArray(result.courseData)) {
+          const latestCourse = result.courseData.find(c =>
+            c.cos_id === course.cos_id ||
+            (c.code === course.code && c.name === course.name)
+          );
+          if (latestCourse) {
+            updatedCourse = { ...course, ...latestCourse };
+          }
+        }
+      } catch (error) {
+        console.error('查找最新課程資料失敗:', error);
+      }
+
+      // 構建選課路徑 HTML
+      let pathsHtml = '';
+      if (updatedCourse.paths && Array.isArray(updatedCourse.paths) && updatedCourse.paths.length > 0) {
+        pathsHtml = `
+          <div class="detail-section">
+            <h2 class="detail-section-title">📂 選課路徑</h2>
+            <div class="paths-list">
+              ${updatedCourse.paths.map((path, index) => {
+                const pathParts = [];
+                if (path.type) pathParts.push(path.type);
+                if (path.category) pathParts.push(path.category);
+                if (path.college) pathParts.push(path.college);
+                if (path.department) pathParts.push(path.department);
+                pathParts.push('全部');
+                const prefix = updatedCourse.paths.length > 1 ? `${index + 1}. ` : '📍 ';
+                return `<div class="course-path">${prefix}${pathParts.join(' / ')}</div>`;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // 載入課程詳細資訊（從 API）
+      const courseKey = getCourseKey(updatedCourse);
+      let detailsHtml = '';
+
+      if (!courseDetailsCache[courseKey]) {
+        try {
+          if (updatedCourse.cos_id && updatedCourse.acy && updatedCourse.sem) {
+            const params = new URLSearchParams({
+              acy: updatedCourse.acy,
+              sem: updatedCourse.sem,
+              cos_id: updatedCourse.cos_id
+            });
+
+            const timeout = (ms) => new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('請求超時')), ms)
+            );
+
+            const [baseResponse, descResponse] = await Promise.race([
+              Promise.all([
+                fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineBase', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: params.toString()
+                }),
+                fetch('https://timetable.nycu.edu.tw/?r=main/getCrsOutlineDescription', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: params.toString()
+                })
+              ]),
+              timeout(10000)
+            ]);
+
+            if (baseResponse.ok && descResponse.ok) {
+              const baseData = await baseResponse.json();
+              const descData = await descResponse.json();
+              const details = extractCourseDetailsFromAPI(baseData, descData, updatedCourse);
+              if (details) {
+                courseDetailsCache[courseKey] = details;
+                saveCourseDetailsCache();
+              }
+            }
+          }
+        } catch (error) {
+          console.error('載入課程詳細資訊失敗:', error);
+        }
+      }
+
+      if (courseDetailsCache[courseKey]) {
+        detailsHtml = `
+          <div class="detail-section">
+            <h2 class="detail-section-title">📋 課程詳細資訊</h2>
+            ${displayCourseDetailsHTML(courseDetailsCache[courseKey])}
+          </div>
+        `;
+      }
+
+      // 構建 memo HTML
+      let memoHtml = '';
+      if (updatedCourse.memo && updatedCourse.memo.trim()) {
+        memoHtml = `
+          <div class="detail-section">
+            <h2 class="detail-section-title">📝 備註</h2>
+            <div class="detail-memo-content">${updatedCourse.memo}</div>
+          </div>
+        `;
+      }
+
+      // 檢查是否已在課表中
+      const isInTimetable = !!timetable[courseKey];
+
+      // 組合完整內容
+      detailView.innerHTML = `
+        <div class="detail-page-header">
+          <div class="detail-course-code">${updatedCourse.code}</div>
+          <div class="detail-course-name">${updatedCourse.name}</div>
+          ${updatedCourse.teacher ? `<div class="detail-course-info">👨‍🏫 授課教師：${updatedCourse.teacher}</div>` : ''}
+          ${updatedCourse.time ? `<div class="detail-course-info">🕐 時間：${updatedCourse.time}</div>` : ''}
+          ${updatedCourse.room ? `<div class="detail-course-info">📍 教室：${updatedCourse.room}</div>` : ''}
+          ${updatedCourse.credits ? `<div class="detail-course-info">📚 學分：${updatedCourse.credits}</div>` : ''}
+        </div>
+
+        ${memoHtml}
+        ${pathsHtml}
+        ${detailsHtml}
+
+        <div class="detail-actions">
+          <button class="slot-detail-add-btn ${isInTimetable ? 'in-timetable' : ''}">
+            ${isInTimetable ? '✓ 已加入課表' : '+ 加入課表'}
+          </button>
+          ${updatedCourse.cos_id && updatedCourse.acy && updatedCourse.sem ? `
+            <button class="detail-outline-btn slot-detail-outline-btn">📄 開啟課程綱要</button>
+          ` : ''}
+        </div>
+      `;
+
+      // 為加入課表按鈕添加事件
+      const addBtn = detailView.querySelector('.slot-detail-add-btn');
+      if (addBtn) {
+        addBtn.addEventListener('click', function() {
+          if (timetable[courseKey]) {
+            if (confirm(`確定要從課表移除「${updatedCourse.name}」嗎？`)) {
+              removeFromTimetable(updatedCourse);
+              // 更新按鈕狀態
+              this.classList.remove('in-timetable');
+              this.textContent = '+ 加入課表';
+              // 背景更新課表顯示
+              displayTimetable();
+            }
+          } else {
+            if (addToTimetable(updatedCourse)) {
+              // 更新按鈕狀態
+              this.classList.add('in-timetable');
+              this.textContent = '✓ 已加入課表';
+              // 背景更新課表顯示
+              displayTimetable();
+            }
+          }
+        });
+      }
+
+      // 為課程綱要按鈕添加事件
+      const outlineBtn = detailView.querySelector('.slot-detail-outline-btn');
+      if (outlineBtn) {
+        outlineBtn.addEventListener('click', function() {
+          openCourseOutline(updatedCourse);
+        });
+      }
+    }
+
+    // 為「書籤」按鈕添加事件
+    const bookmarkBtns = modal.querySelectorAll('.slot-bookmark-btn');
+    bookmarkBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 防止觸發父元素的點擊事件
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const course = availableCourses[courseIndex];
+        const courseKey = getCourseKey(course);
+
+        toggleBookmark(course);
+
+        // 更新按鈕狀態
+        const isNowBookmarked = !!bookmarks[courseKey];
+        this.classList.toggle('bookmarked', isNowBookmarked);
+        this.textContent = isNowBookmarked ? '★' : '☆';
+        this.title = isNowBookmarked ? '移除書籤' : '加入書籤';
+
+        // 更新書籤計數
+        updateBookmarkCount();
+      });
+    });
+
+    // 為「查看歐趴糖評價」按鈕添加事件
+    const ratingBtns = modal.querySelectorAll('.slot-course-rating-btn');
+    ratingBtns.forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 防止觸發父元素的點擊事件
+        const courseIndex = parseInt(this.dataset.courseIndex);
+        const course = availableCourses[courseIndex];
+        openOPTRating(course);
+      });
     });
 
     // 為加入課表按鈕添加事件
@@ -3640,13 +5110,19 @@ document.addEventListener('DOMContentLoaded', function() {
           // 已在課表中，執行移除
           if (confirm(`確定要從課表移除「${course.name}」嗎？`)) {
             removeFromTimetable(course);
-            document.body.removeChild(overlay);
+            // 更新按鈕狀態
+            this.classList.remove('in-timetable');
+            this.textContent = '+ 加入課表';
+            // 背景更新課表顯示
             displayTimetable();
           }
         } else {
           // 不在課表中，執行加入
           if (addToTimetable(course)) {
-            document.body.removeChild(overlay);
+            // 更新按鈕狀態
+            this.classList.add('in-timetable');
+            this.textContent = '✓ 已加入';
+            // 背景更新課表顯示
             displayTimetable();
           }
         }
@@ -3659,10 +5135,7 @@ document.addEventListener('DOMContentLoaded', function() {
       item.addEventListener('click', function() {
         const courseIndex = parseInt(this.dataset.courseIndex);
         const course = availableCourses[courseIndex];
-        // 關閉當前彈窗
-        document.body.removeChild(overlay);
-        // 顯示詳細資訊
-        showDetailView(course);
+        showDetailInModal(course, courseIndex);
       });
     });
   }
@@ -3790,7 +5263,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       } catch (error) {
         console.error('載入課程詳細資訊失敗:', error);
-        bodyDiv.innerHTML = '<div class="course-modal-error">載入失敗，請稍後再試</div>';
+        const errorMessage = error.message || '未知錯誤';
+        const isNetworkError = errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch');
+        bodyDiv.innerHTML = `<div class="course-modal-error">
+          載入失敗${isNetworkError ? '（網路連線問題）' : ''}
+          <br><small style="opacity: 0.7;">請檢查網路連線後重試</small>
+        </div>`;
         return;
       }
     }
@@ -3953,6 +5431,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const closeSettings = document.getElementById('closeSettings');
   const saveSettings = document.getElementById('saveSettings');
   const reportIssue = document.getElementById('reportIssue');
+  const reloadBtn = document.getElementById('reloadBtn');
 
   // 日誌相關元素
   const logBtn = document.getElementById('logBtn');
@@ -4220,6 +5699,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // 回報問題按鈕事件
   reportIssue.addEventListener('click', () => {
     window.open('https://forms.gle/SbPcqgVRuNSdVyqK9', '_blank');
+  });
+
+  // 重新整理介面按鈕事件
+  reloadBtn.addEventListener('click', () => {
+    location.reload();
   });
 
   // 日誌面板事件
@@ -4694,7 +6178,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function getFreePeriods() {
     const allPeriods = [];
     const days = ['M', 'T', 'W', 'R', 'F'];
-    const periods = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'];
+    const periods = ['1', '2', '3', '4', 'n', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'];
 
     // 生成所有可能的時段
     days.forEach(day => {
@@ -6286,18 +7770,12 @@ ${courseList}
               }
               return false;
             });
-            if (!hasMatch) {
-              const pathsText = (course.paths || []).map(p => p.type || '').join(', ');
-              console.log(`  ⊗ 排除：${course.name}（cos_type=${course.cos_type}, paths=${pathsText}，不符合篩選條件）`);
-            }
             return hasMatch;
           });
-          console.log(`✅ 課程類型篩選已應用：排除了 ${beforeCount - finalCourses.length} 門課程，剩餘 ${finalCourses.length} 門`);
-          addLog('info', `課程類型篩選：從 ${beforeCount} 門課程中篩選出 ${finalCourses.length} 門符合類型要求的課程`);
+          addLog('info', `課程類型篩選：排除了 ${beforeCount - finalCourses.length} 門課程`);
         }
 
         if (instructions.excludeKeywords && instructions.excludeKeywords.length > 0) {
-          console.log('\n🚫 應用排除關鍵字篩選:', instructions.excludeKeywords);
           const beforeCount = finalCourses.length;
 
           // 校區名稱到代碼的對照表
@@ -6333,58 +7811,36 @@ ${courseList}
 
               return false;
             });
-            if (shouldExclude) {
-              console.log(`  ⊗ 排除：${course.name}（包含排除關鍵字）`);
-            }
             return !shouldExclude;
           });
-          console.log(`✅ 排除關鍵字篩選已應用：排除了 ${beforeCount - finalCourses.length} 門課程，剩餘 ${finalCourses.length} 門`);
-          addLog('info', `排除關鍵字篩選：從 ${beforeCount} 門課程中排除 ${beforeCount - finalCourses.length} 門包含排除關鍵字的課程`);
+          addLog('info', `排除關鍵字篩選：排除了 ${beforeCount - finalCourses.length} 門課程`);
         }
 
         // ===== 百分比精確匹配過濾 =====
         const percentageRequirements = extractPercentageRequirements(attributeSets);
         if (percentageRequirements.length > 0) {
-          console.log('\n🔢 應用百分比精確匹配過濾:', percentageRequirements.map(r => `${r.percentage}% (同義詞: ${r.synonyms.join(', ')})`));
           const beforeCount = finalCourses.length;
 
           finalCourses = finalCourses.filter(course => {
             const hasMismatch = hasMismatchedPercentage(course, percentageRequirements);
-            if (hasMismatch) {
-              console.log(`  ⊗ 淘汰：${course.name}（百分比不匹配）`);
-            }
             return !hasMismatch;
           });
 
-          console.log(`✅ 百分比過濾已應用：淘汰了 ${beforeCount - finalCourses.length} 門課程，剩餘 ${finalCourses.length} 門`);
-          addLog('info', `百分比過濾：從 ${beforeCount} 門課程中淘汰 ${beforeCount - finalCourses.length} 門百分比不匹配的課程`);
+          addLog('info', `百分比過濾：淘汰了 ${beforeCount - finalCourses.length} 門課程`);
         }
 
         if (finalCourses.length === 0) {
-          console.log('❌ 快速模式未找到符合的課程（或全部被排除）');
           addLog('warning', '快速模式完成：未找到符合的課程');
           updateAIProgress('未找到課程', 0);
           aiThinking.style.display = 'none';
-          const totalSeconds = stopAITimer();
-          console.log(`⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
-          addLog('info', `⏱️ 搜尋總花費時間：${totalSeconds} 秒`);
+          stopAITimer();
           return [];
         }
 
-        console.log(`✅ 快速模式完成 - 最終匹配 ${finalCourses.length} 門課程:`);
-        addLog('success', `快速模式完成：最終匹配到 ${finalCourses.length} 門課程`);
-
-        finalCourses.slice(0, 20).forEach((c, i) => {
-          const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-          console.log(`  ${i + 1}. ${c.name} | ${c.time} | ${c.dep_name} | 路徑:${pathsText || '無'}`);
-        });
-        if (finalCourses.length > 20) {
-          console.log(`  ... 還有 ${finalCourses.length - 20} 門課程未顯示`);
-        }
+        addLog('success', `快速模式完成：匹配到 ${finalCourses.length} 門課程`);
 
         // 檢查是否被中斷
         if (aiSearchCancelled) {
-          console.log('⏹️ 搜尋已在快速模式 Step 2（評分）前被中斷');
           stopAITimer();
           aiThinking.style.display = 'none';
           cancelWarning.style.display = 'none';
@@ -6392,15 +7848,14 @@ ${courseList}
         }
 
         // ===== Step 2（快速模式）：評分（獨立步驟）=====
-        console.log('\n🔍 ===== Step 2（快速模式）：AI 評分（獨立評分步驟）=====');
         updateAIProgress('Step 2 進行中 - 評分課程', 66);
 
         let scoreMap = null;
         try {
           scoreMap = await scoreCourses(finalCourses, userQuery, attributeSets, aiMode, instructions);
         } catch (error) {
-          console.error('⚠️ Step 2 評分失敗，回退到 Step 1 結果（無分數）:', error);
-          addLog('warning', 'Step 2 評分失敗，返回 Step 1 結果（無分數）');
+          console.error('Step 2 評分失敗:', error.message);
+          addLog('warning', 'Step 2 評分失敗，返回 Step 1 結果');
           scoreMap = null;
         }
 
@@ -6422,19 +7877,8 @@ ${courseList}
           });
           const filteredCount = beforeFilterCount - finalCourses.length;
           if (filteredCount > 0) {
-            console.log(`🗑️ 過濾掉 ${filteredCount} 門低分課程（< 30 分，視為誤判）`);
+            addLog('info', `過濾掉 ${filteredCount} 門低分課程`);
           }
-
-          console.log(`✅ Step 2（快速模式）完成 - 已按分數排序 ${finalCourses.length} 門課程（前10門）:`);
-          finalCourses.slice(0, 10).forEach((c, i) => {
-            const scoreData = scoreMap.get(c.cos_id || c.code);
-            if (scoreData) {
-              const pathsText = (c.paths || []).map(p => [p.type, p.college, p.department, p.category].filter(x => x).join('/')).join('; ');
-              console.log(`  ${i + 1}. [${scoreData.total}分] ${c.name} | ${c.time} | 路徑:${pathsText || '無'} (內容:${scoreData.content} 時間:${scoreData.time} 地點:${scoreData.location} 路徑:${scoreData.path} 匹配:${scoreData.recommend})`);
-            }
-          });
-        } else {
-          console.log(`⚠️ Step 2 評分失敗或無結果，返回 Step 1 的 ${finalCourses.length} 門課程（無分數）`);
         }
 
         const courseIds = finalCourses.map(course => course.cos_id || course.code);
@@ -6759,41 +8203,17 @@ ${courseList}
             const keyword = excludeKeyword.toLowerCase();
 
             // 檢查各個屬性
-            if (course.name && course.name.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（課程名稱包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.teacher && course.teacher.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（教師包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.dep_name && course.dep_name.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（系所包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.cos_type && course.cos_type.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（課程類型包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.code && course.code.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（課程代碼包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.time && course.time.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（時間包含 "${excludeKeyword}"）`);
-              return false;
-            }
-            if (course.room && course.room.toLowerCase().includes(keyword)) {
-              console.log(`  ⊗ 排除：${course.name}（教室包含 "${excludeKeyword}"）`);
-              return false;
-            }
+            if (course.name && course.name.toLowerCase().includes(keyword)) return false;
+            if (course.teacher && course.teacher.toLowerCase().includes(keyword)) return false;
+            if (course.dep_name && course.dep_name.toLowerCase().includes(keyword)) return false;
+            if (course.cos_type && course.cos_type.toLowerCase().includes(keyword)) return false;
+            if (course.code && course.code.toLowerCase().includes(keyword)) return false;
+            if (course.time && course.time.toLowerCase().includes(keyword)) return false;
+            if (course.room && course.room.toLowerCase().includes(keyword)) return false;
 
             // 特殊處理：校區代碼匹配（如「光復校區」→ 檢查是否包含 [GF]）
             const campusCode = campusCodeMap[excludeKeyword];
-            if (campusCode && course.room && course.room.includes(`[${campusCode}]`)) {
-              console.log(`  ⊗ 排除：${course.name}（教室 ${course.room} 位於 ${excludeKeyword}）`);
-              return false;
-            }
+            if (campusCode && course.room && course.room.includes(`[${campusCode}]`)) return false;
           }
           return true;
         });
@@ -6801,41 +8221,29 @@ ${courseList}
         const afterCount = finalCourses.length;
         const excludedCount = beforeCount - afterCount;
         if (excludedCount > 0) {
-          console.log(`✅ 排除條件已應用：排除了 ${excludedCount} 門課程，剩餘 ${afterCount} 門`);
-          addLog('info', `應用排除條件：排除了 ${excludedCount} 門課程`);
-        } else {
-          console.log(`✅ 排除條件已應用：沒有課程被排除`);
+          addLog('info', `排除條件：排除了 ${excludedCount} 門課程`);
         }
       }
 
       // ===== 百分比精確匹配過濾 =====
       const percentageRequirements = extractPercentageRequirements(attributeSets);
       if (percentageRequirements.length > 0) {
-        console.log('\n🔢 ===== 應用百分比精確匹配過濾 =====');
-        console.log('百分比要求:', percentageRequirements.map(r => `${r.percentage}% (同義詞: ${r.synonyms.join(', ')})`));
         const beforeCount = finalCourses.length;
 
         finalCourses = finalCourses.filter(course => {
           const hasMismatch = hasMismatchedPercentage(course, percentageRequirements);
-          if (hasMismatch) {
-            console.log(`  ⊗ 淘汰：${course.name}（百分比不匹配）`);
-          }
           return !hasMismatch;
         });
 
         const afterCount = finalCourses.length;
         const eliminatedCount = beforeCount - afterCount;
         if (eliminatedCount > 0) {
-          console.log(`✅ 百分比過濾已應用：淘汰了 ${eliminatedCount} 門課程，剩餘 ${afterCount} 門`);
-          addLog('info', `百分比過濾：淘汰了 ${eliminatedCount} 門百分比不匹配的課程`);
-        } else {
-          console.log(`✅ 百分比過濾已應用：沒有課程被淘汰`);
+          addLog('info', `百分比過濾：淘汰了 ${eliminatedCount} 門課程`);
         }
       }
 
       // ===== 後處理：應用時間篩選 =====
       if (instructions.timeFilters.length > 0) {
-        console.log('\n⏰ ===== 應用時間篩選 =====');
         const beforeCount = finalCourses.length;
 
         finalCourses = finalCourses.filter(course => {
@@ -6844,26 +8252,18 @@ ${courseList}
           // 檢查課程時間是否包含任一篩選條件
           const courseTime = course.time.toUpperCase();
           const hasMatch = instructions.timeFilters.some(filter => courseTime.includes(filter.toUpperCase()));
-
-          if (!hasMatch) {
-            console.log(`  ⊗ 排除：${course.name}（時間 ${course.time} 不符合篩選條件）`);
-          }
           return hasMatch;
         });
 
         const afterCount = finalCourses.length;
         const excludedCount = beforeCount - afterCount;
         if (excludedCount > 0) {
-          console.log(`✅ 時間篩選已應用：排除了 ${excludedCount} 門課程，剩餘 ${afterCount} 門`);
-          addLog('info', `應用時間篩選：排除了 ${excludedCount} 門課程`);
-        } else {
-          console.log(`✅ 時間篩選已應用：沒有課程被排除`);
+          addLog('info', `時間篩選：排除了 ${excludedCount} 門課程`);
         }
       }
 
       // ===== 後處理：應用課程類型篩選 =====
       if (instructions.courseTypeFilters.length > 0) {
-        console.log('\n📚 ===== 應用課程類型篩選 =====');
         const beforeCount = finalCourses.length;
 
         finalCourses = finalCourses.filter(course => {
@@ -6871,15 +8271,12 @@ ${courseList}
           const hasMatch = instructions.courseTypeFilters.some(filter => {
             // 特殊處理：通識課程（檢查 paths）
             if (filter === '通識') {
-              // 檢查 paths 是否包含「核心課程」或「通識」相關字眼
-              // 因為有些通識課程的 cos_type 是「選修」或「核心」，不能依賴 cos_type 判斷
               if (course.paths && Array.isArray(course.paths)) {
                 return course.paths.some(path => {
                   const typeText = (path.type || '').toLowerCase();
                   const categoryText = (path.category || '').toLowerCase();
                   const collegeText = (path.college || '').toLowerCase();
 
-                  // 檢查是否包含核心課程、通識、或學士班共同課程
                   return typeText.includes('核心課程') ||
                          typeText.includes('通識') ||
                          categoryText.includes('核心課程') ||
@@ -6899,26 +8296,18 @@ ${courseList}
             return false;
           });
 
-          if (!hasMatch) {
-            const pathsText = (course.paths || []).map(p => p.type || '').join(', ');
-            console.log(`  ⊗ 排除：${course.name}（cos_type=${course.cos_type}, paths=${pathsText}，不符合篩選條件）`);
-          }
           return hasMatch;
         });
 
         const afterCount = finalCourses.length;
         const excludedCount = beforeCount - afterCount;
         if (excludedCount > 0) {
-          console.log(`✅ 課程類型篩選已應用：排除了 ${excludedCount} 門課程，剩餘 ${afterCount} 門`);
-          addLog('info', `應用課程類型篩選：排除了 ${excludedCount} 門課程`);
-        } else {
-          console.log(`✅ 課程類型篩選已應用：沒有課程被排除`);
+          addLog('info', `課程類型篩選：排除了 ${excludedCount} 門課程`);
         }
       }
 
       // ===== 後處理：應用學分篩選 =====
       if (instructions.creditFilters.length > 0) {
-        console.log('\n💳 ===== 應用學分篩選 =====');
         const beforeCount = finalCourses.length;
 
         finalCourses = finalCourses.filter(course => {
@@ -6933,19 +8322,13 @@ ${courseList}
             }
           });
 
-          if (!hasMatch) {
-            console.log(`  ⊗ 排除：${course.name}（學分 ${course.credits} 不符合篩選條件）`);
-          }
           return hasMatch;
         });
 
         const afterCount = finalCourses.length;
         const excludedCount = beforeCount - afterCount;
         if (excludedCount > 0) {
-          console.log(`✅ 學分篩選已應用：排除了 ${excludedCount} 門課程，剩餘 ${afterCount} 門`);
-          addLog('info', `應用學分篩選：排除了 ${excludedCount} 門課程`);
-        } else {
-          console.log(`✅ 學分篩選已應用：沒有課程被排除`);
+          addLog('info', `學分篩選：排除了 ${excludedCount} 門課程`);
         }
       }
 
@@ -7394,12 +8777,23 @@ ${step1CourseListText}
 
       console.log('📞 收到 background 回應:', response);
 
+      // 驗證回應
+      if (!response) {
+        throw new Error('未收到 background worker 回應，擴充功能可能需要重新載入');
+      }
       if (!response.success) {
         throw new Error(response.error || 'Ollama API 請求失敗');
+      }
+      if (response.data === undefined || response.data === null) {
+        throw new Error('Ollama API 返回無有效資料');
       }
 
       return response.data;
     } catch (error) {
+      // 檢查是否為擴充功能上下文失效
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ 擴充功能已被重新載入，請重新整理頁面');
+      }
       console.error('❌ Ollama API 調用失敗:', error);
       throw error;
     }
@@ -7429,12 +8823,22 @@ ${step1CourseListText}
         prompt: prompt
       });
 
+      // 驗證回應
+      if (!response) {
+        throw new Error('未收到 background worker 回應，擴充功能可能需要重新載入');
+      }
       if (!response.success) {
         throw new Error(response.error || 'OpenAI API 請求失敗');
+      }
+      if (response.data === undefined || response.data === null) {
+        throw new Error('OpenAI API 返回無有效資料');
       }
 
       return response.data;
     } catch (error) {
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ 擴充功能已被重新載入，請重新整理頁面');
+      }
       console.error('OpenAI API 調用失敗:', error);
       throw error;
     }
@@ -7468,12 +8872,22 @@ ${step1CourseListText}
         prompt: prompt
       });
 
+      // 驗證回應
+      if (!response) {
+        throw new Error('未收到 background worker 回應，擴充功能可能需要重新載入');
+      }
       if (!response.success) {
         throw new Error(response.error || 'Gemini API 請求失敗');
+      }
+      if (response.data === undefined || response.data === null) {
+        throw new Error('Gemini API 返回無有效資料');
       }
 
       return response.data;
     } catch (error) {
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ 擴充功能已被重新載入，請重新整理頁面');
+      }
       console.error('Gemini API 調用失敗:', error);
       throw error;
     }
@@ -7504,12 +8918,22 @@ ${step1CourseListText}
         prompt: prompt
       });
 
+      // 驗證回應
+      if (!response) {
+        throw new Error('未收到 background worker 回應，擴充功能可能需要重新載入');
+      }
       if (!response.success) {
         throw new Error(response.error || '自定義 API 請求失敗');
+      }
+      if (response.data === undefined || response.data === null) {
+        throw new Error('自定義 API 返回無有效資料');
       }
 
       return response.data;
     } catch (error) {
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ 擴充功能已被重新載入，請重新整理頁面');
+      }
       console.error('自定義 API 調用失敗:', error);
       throw error;
     }
@@ -7730,12 +9154,22 @@ ${step1CourseListText}
           throw new Error('未知的 AI 提供商: ' + aiConfig.provider);
       }
 
+      // 驗證回應
+      if (!response) {
+        throw new Error('未收到 background worker 回應，擴充功能可能需要重新載入');
+      }
       if (!response.success) {
         throw new Error(response.error || 'AI 關鍵字生成失敗');
+      }
+      if (response.data === undefined || response.data === null) {
+        throw new Error('AI 返回無有效資料');
       }
 
       return response.data;
     } catch (error) {
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ 擴充功能已被重新載入，請重新整理頁面');
+      }
       console.error('關鍵字生成 API 調用失敗:', error);
       throw error;
     }
@@ -7880,8 +9314,9 @@ ${outlineContent}
       return;
     }
 
-    // 如果已經在執行，不重複執行
-    if (autoLearningInProgress) {
+    // 如果已經在執行（包括主動提取），不重複執行
+    if (autoLearningInProgress || proactiveExtractionInProgress) {
+      console.log('⚠️ 關鍵字提取已在執行中，跳過自動提取');
       return;
     }
 
@@ -8116,8 +9551,9 @@ ${outlineContent}
       return;
     }
 
-    if (proactiveExtractionInProgress) {
-      console.log('⚠️ 主動提取已在執行中，跳過重複啟動');
+    // 如果已經在執行（包括自動提取），不重複執行
+    if (proactiveExtractionInProgress || autoLearningInProgress) {
+      console.log('⚠️ 關鍵字提取已在執行中，跳過主動提取');
       return;
     }
 
